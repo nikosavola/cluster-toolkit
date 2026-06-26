@@ -40,11 +40,11 @@ jobs:
     - name: Add external label only for develop PRs
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        AUTHOR: ${{ github.event.pull_request.user.login }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        TARGET_BRANCH: ${{ github.event.pull_request.base.ref }}
+        REPO: ${{ github.repository }}
       run: |
-          AUTHOR="${{ github.event.pull_request.user.login }}"
-          PR_NUMBER="${{ github.event.pull_request.number }}"
-          TARGET_BRANCH="${{ github.event.pull_request.base.ref }}"
-
           echo "Author: $AUTHOR"
           echo "Target branch: $TARGET_BRANCH"
 
@@ -62,7 +62,7 @@ jobs:
             echo "External user → adding label"
 
             gh api \
-              repos/${{ github.repository }}/issues/$PR_NUMBER/labels \
+              "repos/$REPO/issues/$PR_NUMBER/labels" \
               -X POST \
               -F labels[]=external || true
           fi
