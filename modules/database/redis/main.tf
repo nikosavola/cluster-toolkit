@@ -41,4 +41,13 @@ resource "google_redis_instance" "default" {
   labels             = { ghpc_module = "redis", ghpc_role = "database" }
 
   depends_on = [google_project_service.redis_api]
+
+  # Guard against accidental destruction of the Redis instance (and its data).
+  # The provider constraint (>= 3.83) permits versions that predate the native
+  # google_redis_instance `deletion_protection` argument (added later), so a
+  # lifecycle block is used instead. `prevent_destroy` must be a literal `true`
+  # and cannot reference a variable; opting out requires editing this module.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
