@@ -1522,11 +1522,27 @@ def wait_request(operation, project: str):
     return req
 
 
-def wait_for_operation(operation) -> Dict[str, Any]:
-    """wait for given operation"""
+# Default overall deadline for waiting on a single GCP operation.
+# The GCP `wait` endpoint long-polls for up to ~2 minutes per call, so this
+# bound is enforced against elapsed wall-clock time, not a fixed iteration
+# count. 4 hours comfortably covers slow bulkInsert / capacity acquisition
+# while still preventing an unbounded (retry-forever) loop.
+WAIT_FOR_OPERATION_TIMEOUT_SEC = 4 * 60 * 60
+
+
+def wait_for_operation(operation, timeout_sec: float = WAIT_FOR_OPERATION_TIMEOUT_SEC) -> Dict[str, Any]:
+    """wait for given operation
+
+    Polls the GCP `wait` endpoint until the operation reaches the DONE state,
+    bounded by an absolute wall-clock deadline (`timeout_sec`). On exceeding the
+    deadline a TimeoutError is raised so callers fail loudly rather than
+    proceeding with a non-DONE operation; this preserves the existing contract
+    that any returned dict is a completed (DONE) operation.
+    """
     project = parse_self_link(operation["selfLink"]).project
     wait_req = wait_request(operation, project=project)
 
+    deadline = time() + timeout_sec
     while True:
         result = ensure_execute(wait_req)
         if result["status"] == "DONE":
@@ -1535,6 +1551,15 @@ def wait_for_operation(operation) -> Dict[str, Any]:
                 f"operation complete{log_errors}: type={result['operationType']}, name={result['name']}"
             )
             return result
+
+        if time() >= deadline:
+            msg = (
+                f"timed out after {timeout_sec}s waiting for operation to reach "
+                f"DONE: type={result.get('operationType')}, name={result.get('name')}, "
+                f"last status={result.get('status')}"
+            )
+            log.error(msg)
+            raise TimeoutError(msg)
 
 
 

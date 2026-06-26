@@ -26,6 +26,13 @@ log = logging.getLogger()
 REPAIR_FILE = Path("/slurm/repair_operations.json")
 REPAIR_REASONS = frozenset(["PERFORMANCE", "SDC", "XID", "unspecified"])
 
+# Maximum number of consecutive poll cycles in which an operation's status
+# cannot be retrieved (None / error from _get_operation_status) before the
+# operation is abandoned. poll_operations() runs periodically from slurmsync,
+# so this bounds the previously retry-forever behavior. The counter is
+# persisted per-operation in the repair file and reset on any successful read.
+MAX_CONSECUTIVE_POLL_FAILURES = 60
+
 def is_node_being_repaired(node):
     """Check if a node is currently being repaired."""
     operations = _get_operations()
@@ -126,7 +133,31 @@ def poll_operations():
         if op_details["status"] == "REPAIR_IN_PROGRESS":
             gcp_op_status = _get_operation_status(op_details["operation_id"])
             if not gcp_op_status:
+                # Could not retrieve the operation status this cycle. Bound the
+                # previously retry-forever behavior with a consecutive-failure
+                # budget so an operation that is permanently unreadable (e.g.
+                # deleted/expired op id) is eventually abandoned instead of
+                # being polled indefinitely.
+                failures = op_details.get("poll_failures", 0) + 1
+                op_details["poll_failures"] = failures
+                if failures >= MAX_CONSECUTIVE_POLL_FAILURES:
+                    log.error(
+                        f"Abandoning repair operation for {node}: status could not be "
+                        f"retrieved after {failures} consecutive attempts "
+                        f"(operation_id={op_details.get('operation_id')})."
+                    )
+                    op_details["status"] = "FAILURE"
+                    run(f"{lookup().scontrol} update nodename={node} state=down reason='Repair status unknown'")
+                else:
+                    log.warning(
+                        f"Could not retrieve repair operation status for {node} "
+                        f"(attempt {failures}/{MAX_CONSECUTIVE_POLL_FAILURES})."
+                    )
                 continue
+
+            # Successful read: reset the consecutive-failure counter.
+            if op_details.get("poll_failures"):
+                op_details["poll_failures"] = 0
 
             if gcp_op_status.get("status") == "DONE":
                 if gcp_op_status.get("error"):
