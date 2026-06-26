@@ -6,7 +6,7 @@ MIN_GOLANG_VERSION=1.24 # for building gcluster
 .PHONY: install install-user tests format install-dev-deps \
         warn-go-missing warn-terraform-missing warn-packer-missing \
         warn-go-version warn-terraform-version warn-packer-version \
-        test-engine validate_configs validate_golden_copy packer-check \
+        test-engine test-race validate_configs validate_golden_copy packer-check \
         terraform-format packer-format mypy \
         check-tflint check-pre-commit ci-tests
 
@@ -103,6 +103,10 @@ test-engine: warn-go-missing
 	go vet $(ENG)
 	$(info **************** running gcluster unit tests **************)
 	go test -cover $(ENG) 2>&1 |  perl tools/enforce_coverage.pl
+
+test-race: warn-go-missing
+	$(info **************** running gcluster unit tests with race detector **************)
+	go test -race ./...
 
 ifeq (, $(shell which pre-commit))
 check-pre-commit:
