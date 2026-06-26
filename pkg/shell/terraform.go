@@ -27,9 +27,11 @@ import (
 	"hpc-toolkit/pkg/modulewriter"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/hashicorp/terraform-exec/tfexec"
@@ -65,6 +67,14 @@ type outputValue struct {
 	Value     cty.Value
 }
 
+// signalContext returns a context that is cancelled when the process receives
+// SIGINT (Ctrl-C) or SIGTERM. The returned stop function must be deferred by
+// the caller to release the associated signal handler resources. This allows
+// long-running terraform/packer operations to be cleanly interrupted.
+func signalContext() (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+}
+
 func tfExecPath() (string, error) {
 	path, err := exec.LookPath("terraform")
 	if err != nil {
@@ -91,9 +101,11 @@ func ConfigureTerraform(workingDir string) (*tfexec.Terraform, error) {
 // has been found (e.g. tfexec.PluginDir("/dev/null")) that avoids erroring on
 // properly-initialized root modules
 func needsInit(tf *tfexec.Terraform) bool {
+	ctx, stop := signalContext()
+	defer stop()
 	getOpt := tfexec.Get(false)
 	backendOpt := tfexec.Backend(false)
-	e := tf.Init(context.Background(), getOpt, backendOpt)
+	e := tf.Init(ctx, getOpt, backendOpt)
 
 	return e != nil
 }
@@ -101,8 +113,10 @@ func needsInit(tf *tfexec.Terraform) bool {
 func initModule(tf *tfexec.Terraform) error {
 	var err error
 	if needsInit(tf) {
+		ctx, stop := signalContext()
+		defer stop()
 		logging.Info("Initializing deployment group %s", tf.WorkingDir())
-		err = tf.Init(context.Background())
+		err = tf.Init(ctx)
 	}
 
 	if err != nil {
@@ -115,8 +129,10 @@ func initModule(tf *tfexec.Terraform) error {
 }
 
 func outputModule(tf *tfexec.Terraform) (map[string]cty.Value, error) {
+	ctx, stop := signalContext()
+	defer stop()
 	logging.Info("Collecting terraform outputs from %s", tf.WorkingDir())
-	output, err := tf.Output(context.Background())
+	output, err := tf.Output(ctx)
 	if err != nil {
 		return map[string]cty.Value{}, config.HintError{
 			Hint: fmt.Sprintf("collecting terraform outputs from deployment group %s failed; manually resolve errors", tf.WorkingDir()),
@@ -184,15 +200,17 @@ func helpOnPlanError(msgs []JsonMessage) string {
 }
 
 func planModule(tf *tfexec.Terraform, path string, destroy bool) (bool, error) {
+	ctx, stop := signalContext()
+	defer stop()
 	outOpt := tfexec.Out(path)
 	var jsonOut strings.Builder
-	wantsChange, err := tf.PlanJSON(context.Background(), &jsonOut, outOpt, tfexec.Destroy(destroy))
+	wantsChange, err := tf.PlanJSON(ctx, &jsonOut, outOpt, tfexec.Destroy(destroy))
 	if err != nil {
 		// Invoke `Plan` to get human-readable error.
 		// TODO: implement rendering to avoid double-call.
 		// Note planned deprecration of Plan in favor of JSON-only format
 		// https://github.com/hashicorp/terraform-exec/blob/1b7714111a94813e92936051fb3014fec81218d5/tfexec/plan.go#L128-L129
-		_, plainError := tf.Plan(context.Background(), tfexec.Destroy(destroy))
+		_, plainError := tf.Plan(ctx, tfexec.Destroy(destroy))
 		if plainError == nil { // shouldn't happen
 			plainError = err // fallback to original error (simple `exit status 1`)
 		}
@@ -212,7 +230,9 @@ func promptForApply(tf *tfexec.Terraform, path string, b ApplyBehavior) bool {
 	case AutomaticApply:
 		return true
 	case PromptBeforeApply:
-		plan, err := tf.ShowPlanFileRaw(context.Background(), path)
+		ctx, stop := signalContext()
+		defer stop()
+		plan, err := tf.ShowPlanFileRaw(ctx, path)
 		if err != nil {
 			return false
 		}
@@ -238,6 +258,8 @@ func promptForApply(tf *tfexec.Terraform, path string, b ApplyBehavior) bool {
 // This function applies the terraform plan, but generates outputs in JSON format
 // (instead of text)
 func applyPlanJsonOutput(tf *tfexec.Terraform, path string) error {
+	ctx, stop := signalContext()
+	defer stop()
 	planFileOpt := tfexec.DirOrPlan(path)
 	logging.Info("Running terraform apply on deployment group %s", tf.WorkingDir())
 
@@ -253,7 +275,7 @@ func applyPlanJsonOutput(tf *tfexec.Terraform, path string) error {
 		defer jsonFile.Close()
 		tf.SetStdout(newTimestampWriter(os.Stdout))
 		tf.SetStderr(newTimestampWriter(os.Stderr))
-		if err := tf.ApplyJSON(context.Background(), jsonFile, planFileOpt); err != nil {
+		if err := tf.ApplyJSON(ctx, jsonFile, planFileOpt); err != nil {
 			return err
 		}
 		tf.SetStdout(nil)
@@ -263,11 +285,13 @@ func applyPlanJsonOutput(tf *tfexec.Terraform, path string) error {
 }
 
 func applyPlanConsoleOutput(tf *tfexec.Terraform, path string) error {
+	ctx, stop := signalContext()
+	defer stop()
 	planFileOpt := tfexec.DirOrPlan(path)
 	logging.Info("Running terraform apply on deployment group %s", tf.WorkingDir())
 	tf.SetStdout(newTimestampWriter(os.Stdout))
 	tf.SetStderr(newTimestampWriter(os.Stderr))
-	if err := tf.Apply(context.Background(), planFileOpt); err != nil {
+	if err := tf.Apply(ctx, planFileOpt); err != nil {
 		return err
 	}
 	tf.SetStdout(nil)

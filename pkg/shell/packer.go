@@ -39,7 +39,9 @@ func ConfigurePacker() error {
 // ExecPackerCmd runs packer with arguments in the given working directory
 // optionally prints to stdout/stderr
 func ExecPackerCmd(workingDir string, printToScreen bool, args ...string) error {
-	cmd := exec.Command("packer", args...)
+	ctx, stop := signalContext()
+	defer stop()
+	cmd := exec.CommandContext(ctx, "packer", args...)
 	cmd.Dir = workingDir
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
