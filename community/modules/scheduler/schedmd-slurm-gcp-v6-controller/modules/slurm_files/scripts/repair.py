@@ -17,6 +17,8 @@
 import fcntl
 import json
 import logging
+import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 import subprocess
@@ -37,30 +39,52 @@ def _get_operations():
         return {}
     with open(REPAIR_FILE, 'r', encoding='utf-8') as f:
         try:
+            fcntl.lockf(f, fcntl.LOCK_SH)
+        except (IOError, BlockingIOError):
+            log.warning(f"Could not acquire shared lock on {REPAIR_FILE}.")
+            return {}
+        try:
             return json.load(f)
         except json.JSONDecodeError:
             log.error(f"Failed to decode JSON from {REPAIR_FILE}, returning empty operations list.")
             return {}
+        finally:
+            fcntl.lockf(f, fcntl.LOCK_UN)
 
 def _write_all_operations(operations):
     """Store the operations to the file safely."""
+    lock_path = REPAIR_FILE.with_name(REPAIR_FILE.name + ".lock")
     try:
-        with open(REPAIR_FILE, 'a', encoding='utf-8') as f:
+        # Serialize writers via an exclusive lock on a dedicated lock file, then
+        # publish the new contents atomically with a temp file + os.replace so
+        # readers never observe a partially written (torn) file.
+        with open(lock_path, 'w', encoding='utf-8') as lock_f:
             try:
-                fcntl.lockf(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.lockf(lock_f, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except (IOError, BlockingIOError):
                 log.warning(f"Could not acquire lock on {REPAIR_FILE}. Another process may be running.")
                 return False
 
             try:
-                f.seek(0)
-                f.truncate()
-                json.dump(operations, f, indent=4)
-                f.flush()
-                return True
+                fd, tmp_path = tempfile.mkstemp(
+                    dir=str(REPAIR_FILE.parent),
+                    prefix=REPAIR_FILE.name + ".",
+                    suffix=".tmp",
+                )
+                try:
+                    with os.fdopen(fd, 'w', encoding='utf-8') as tmp_f:
+                        json.dump(operations, tmp_f, indent=4)
+                        tmp_f.flush()
+                        os.fsync(tmp_f.fileno())
+                    os.replace(tmp_path, REPAIR_FILE)
+                    return True
+                except BaseException:
+                    if os.path.exists(tmp_path):
+                        os.unlink(tmp_path)
+                    raise
             finally:
-                fcntl.lockf(f, fcntl.LOCK_UN)
-    except (IOError, TypeError) as e:
+                fcntl.lockf(lock_f, fcntl.LOCK_UN)
+    except (IOError, OSError, TypeError) as e:
         log.error(f"Failed to store repair operations to {REPAIR_FILE}: {e}")
         return False
 
