@@ -1,0 +1,124 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Release SBOM + SLSA Provenance
+#
+# This workflow builds the `gcluster` binary on tag push, generates a CycloneDX
+# SBOM with the Anchore (syft) action, and produces SLSA Build Level 3
+# provenance using the official slsa-framework/slsa-github-generator generic
+# generator reusable workflow. SBOM, binary, and provenance are attached to the
+# GitHub release for the tag.
+#
+# NOTE TO MAINTAINERS: This is a best-effort template that could not be executed
+# in CI when authored. Before the first release please verify:
+#   * The repository is allowed to call the SLSA reusable workflow. Public repos
+#     can call it directly; if the org restricts reusable workflows from outside
+#     the org, add `slsa-framework/slsa-github-generator` to the allow list under
+#     Settings > Actions > General > "Allow specified actions and reusable
+#     workflows".
+#   * The pinned action / reusable-workflow versions below are still current.
+#   * `contents: write` is acceptable for publishing release assets.
+# The generic SLSA generator is used (rather than the Go builder) because the
+# Makefile embeds git-derived version metadata via -ldflags, which is simpler to
+# reproduce with an explicit build step than to express in the Go builder config.
+
+name: 'Release SBOM and SLSA Provenance'
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  # Build the gcluster binary reproducibly and emit its sha256 digest so the
+  # SLSA generator can produce provenance bound to the exact artifact.
+  build:
+    if: github.repository == 'GoogleCloudPlatform/cluster-toolkit'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      digests: ${{ steps.hash.outputs.digests }}
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@v6
+        with:
+          # Full history + tags are required for the Makefile's git-based
+          # version embedding (git describe / tag --points-at HEAD).
+          fetch-depth: 0
+      - name: 'Set up Go'
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.24'
+      - name: 'Build gcluster'
+        run: |
+          make gcluster
+      - name: 'Generate artifact digests'
+        id: hash
+        run: |
+          # gcluster is the real binary; ghpc is a symlink to it (see Makefile).
+          sha256sum gcluster > gcluster.sha256
+          echo "digests=$(base64 -w0 gcluster.sha256)" >> "$GITHUB_OUTPUT"
+      - name: 'Upload built binary'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcluster-binary
+          path: gcluster
+          if-no-files-found: error
+          retention-days: 5
+
+  # Generate a CycloneDX SBOM for the repository/binary using syft.
+  sbom:
+    if: github.repository == 'GoogleCloudPlatform/cluster-toolkit'
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # attach the SBOM to the release
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@v6
+      - name: 'Generate SBOM (syft)'
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          artifact-name: gcluster.cyclonedx.json
+          output-file: gcluster.cyclonedx.json
+          # Only publish the SBOM as a release asset on an actual tag release.
+          upload-release-assets: ${{ startsWith(github.ref, 'refs/tags/') }}
+      - name: 'Upload SBOM artifact'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcluster-sbom
+          path: gcluster.cyclonedx.json
+          if-no-files-found: error
+          retention-days: 5
+
+  # Produce SLSA Build L3 provenance for the built binary and attach it to the
+  # release. This calls the official SLSA generic generator reusable workflow,
+  # which runs on its own isolated runner and signs provenance via Sigstore.
+  provenance:
+    needs: [build]
+    permissions:
+      actions: read    # read the workflow run for provenance metadata
+      id-token: write  # mint the Sigstore OIDC token used to sign provenance
+      contents: write  # upload the provenance to the GitHub release
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: ${{ needs.build.outputs.digests }}
+      # Attach the .intoto.jsonl provenance to the release for tag pushes.
+      upload-assets: ${{ startsWith(github.ref, 'refs/tags/') }}
