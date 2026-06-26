@@ -71,6 +71,21 @@ variable "tier" {
   }
 }
 
+variable "auth_enabled" {
+  description = "Indicates whether OSS Redis AUTH is enabled. Supported on both the BASIC and STANDARD_HA tiers."
+  type        = bool
+  default     = true
+  # OSS Redis AUTH is supported on every service tier, so auth_enabled has no
+  # dependency on var.tier. The condition below simply asserts that tier holds
+  # one of the supported enum values whenever AUTH is requested, keeping the
+  # auth/tier combination well-formed without enforcing a constraint the
+  # google_redis_instance provider does not actually impose.
+  validation {
+    condition     = !var.auth_enabled || contains(["BASIC", "STANDARD_HA"], var.tier)
+    error_message = "When auth_enabled is true, tier must be one of BASIC or STANDARD_HA (Redis AUTH is supported on both tiers)."
+  }
+}
+
 variable "memory_size_gb" {
   description = "Redis memory size in GiB. Defaults to 2 GiB as a safe minimal baseline for general caching workloads."
   type        = number
@@ -81,10 +96,4 @@ variable "redis_version" {
   description = "The version of Redis software."
   type        = string
   default     = "REDIS_6_X"
-}
-
-variable "auth_enabled" {
-  description = "Indicates whether OSS Redis AUTH is enabled."
-  type        = bool
-  default     = true
 }
