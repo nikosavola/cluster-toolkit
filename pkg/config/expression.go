@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -278,7 +279,9 @@ func (e BaseExpression) key() expressionKey {
 func (e BaseExpression) AsValue() cty.Value {
 	k := e.key()
 	// we don't care if it overrides as expressions are identical
+	globalExpressionsMu.Lock()
 	globalExpressions[k] = e
+	globalExpressionsMu.Unlock()
 	return cty.DynamicVal.Mark(k)
 }
 
@@ -296,7 +299,10 @@ type expressionKey struct {
 	k string
 }
 
-var globalExpressions = map[expressionKey]Expression{}
+var (
+	globalExpressions   = map[expressionKey]Expression{}
+	globalExpressionsMu sync.RWMutex
+)
 
 // IsExpressionValue checks if the value is result of `Expression.AsValue()`.
 // Returns original expression and result of check.
@@ -306,7 +312,9 @@ func IsExpressionValue(v cty.Value) (Expression, bool) {
 	if !ok {
 		return nil, false
 	}
+	globalExpressionsMu.RLock()
 	expr, stored := globalExpressions[key]
+	globalExpressionsMu.RUnlock()
 	if !stored { // shouldn't happen
 		panic(fmt.Errorf("Expression isn't present in global state, while being referenced by value %#v", v))
 	}
