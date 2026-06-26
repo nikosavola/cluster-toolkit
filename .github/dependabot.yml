@@ -40,6 +40,22 @@ updates:
       update-types:
       - minor
       - patch
+- package-ecosystem: github-actions
+  directory: /
+  labels:
+  - dependencies
+  - release-chore
+  schedule:
+    interval: weekly
+  target-branch: develop
+  groups:
+    actions-minor-and-patch:
+      applies-to: version-updates
+      patterns:
+      - "*"
+      update-types:
+      - minor
+      - patch
 - package-ecosystem: pip
   directory: /community/front-end/ofe/
   labels:
