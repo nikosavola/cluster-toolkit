@@ -16,6 +16,16 @@ module "spanner_db" {
 }
 ```
 
+## Deletion Protection
+
+In addition to the per-database `deletion_protection` setting, the Spanner
+instance itself is guarded against accidental destruction via a
+`lifecycle { prevent_destroy = true }` block on the `google_spanner_instance`
+resource. A `terraform destroy` (or any plan that would delete the instance)
+will fail until this protection is removed. Because `prevent_destroy` must be a
+literal value and cannot reference a variable, opting out requires editing the
+module's `main.tf` to remove the `lifecycle` block.
+
 <!-- BEGINNING OF PRE-COMMIT-TERRAFORM DOCS HOOK -->
 Copyright 2026 Google LLC
 

@@ -23,6 +23,17 @@ resource "google_spanner_instance" "main" {
   processing_units = var.processing_units
   labels           = local.labels
   edition          = var.edition
+
+  # The google_spanner_instance resource has no native instance-level deletion
+  # guard across the pinned provider range (>= 6.0): there is no
+  # deletion_protection argument, the deletion_policy = "PREVENT" argument was
+  # only introduced in a later provider release than this module's floor, and
+  # force_destroy is the opposite of a guard (it deletes backups on destroy).
+  # prevent_destroy must be a literal and cannot reference a variable, so it is
+  # hardcoded here. Opting out of this protection requires editing the module.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "google_spanner_database" "db" {
