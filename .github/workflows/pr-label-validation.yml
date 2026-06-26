@@ -32,6 +32,9 @@ on:
     - develop
     - release-candidate
 
+permissions:
+  contents: read
+
 jobs:
   pr-label-validation:
     if: github.repository == 'GoogleCloudPlatform/cluster-toolkit' && github.event.pull_request.draft == false

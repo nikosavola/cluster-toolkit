@@ -18,6 +18,9 @@ on:
   schedule:
   - cron: "0 0 * * *" # Runs daily
 
+permissions:
+  contents: read
+
 jobs:
   pr-inactivity-check:
     runs-on: ubuntu-latest
