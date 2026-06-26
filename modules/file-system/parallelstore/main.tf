@@ -62,6 +62,18 @@ resource "google_parallelstore_instance" "instance" {
   labels = local.labels
 
   depends_on = [var.private_vpc_connection_peering]
+
+  # Destroy safeguard: prevent accidental deletion of the parallelstore
+  # instance and the data it holds. Parallelstore data is not recoverable once
+  # the instance is deleted; back data up via export-to-GCS before any teardown.
+  # The pinned google provider (>= 6.13.0) does not expose a native
+  # deletion_protection / deletion_policy argument for this resource, so a
+  # static lifecycle block is used. prevent_destroy must be a literal value and
+  # cannot reference a variable; to intentionally destroy the instance, edit
+  # this module to remove or set this block to false.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "null_resource" "hydration" {

@@ -127,6 +127,22 @@ Use `dfuse_environment` to provide additional environment variables for `dfuse` 
       D_LOG_MASK: debug
 ```
 
+### Destroy safeguard
+
+The parallelstore instance is protected against accidental deletion with a
+`lifecycle { prevent_destroy = true }` block on the underlying
+`google_parallelstore_instance` resource. Parallelstore data is **not
+recoverable** once the instance is deleted, so back the data up by
+[exporting it to a GCS bucket](https://cloud.google.com/parallelstore/docs/export-data)
+before any teardown.
+
+The pinned google provider (`>= 6.13.0`) does not expose a native
+`deletion_protection` / `deletion_policy` argument for this resource, so the
+safeguard is implemented as a static `lifecycle` block. Because
+`prevent_destroy` only accepts a literal value (it cannot reference a
+variable), opting out requires editing `main.tf` to remove the block (or set
+`prevent_destroy = false`) before running `terraform destroy`.
+
 <!-- BEGINNING OF PRE-COMMIT-TERRAFORM DOCS HOOK -->
 Copyright 2026 Google LLC
 
