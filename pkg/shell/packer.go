@@ -19,6 +19,7 @@ package shell
 import (
 	"bytes"
 	"hpc-toolkit/pkg/config"
+	"hpc-toolkit/pkg/logging"
 	"io"
 	"os"
 	"os/exec"
@@ -66,17 +67,27 @@ func ExecPackerCmd(workingDir string, printToScreen bool, args ...string) error 
 		outBuf = bytes.NewBuffer([]byte{})
 		errBuf = bytes.NewBuffer([]byte{})
 	}
+	// Separate error vars per goroutine keep this race-free (no shared writes).
+	var outCopyErr, errCopyErr error
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		io.Copy(outBuf, stdout)
+		_, outCopyErr = io.Copy(outBuf, stdout)
 	}()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		io.Copy(errBuf, stderr)
+		_, errCopyErr = io.Copy(errBuf, stderr)
 	}()
 	wg.Wait()
+
+	// Surface any errors that occurred while draining the command's pipes.
+	if outCopyErr != nil {
+		logging.Error("error capturing packer stdout: %v", outCopyErr)
+	}
+	if errCopyErr != nil {
+		logging.Error("error capturing packer stderr: %v", errCopyErr)
+	}
 
 	if err := cmd.Wait(); err != nil {
 		if !printToScreen {

@@ -297,6 +297,10 @@ func applyOrDestroy(tf *tfexec.Terraform, b ApplyBehavior, of OutputFormat, dest
 		return err
 	}
 	defer os.Remove(f.Name())
+	// Subsequent reads use f.Name() (a fresh handle), so the original handle
+	// is not needed after creation; close it to avoid leaking the descriptor.
+	// Declared after the Remove defer so Close runs before Remove (LIFO).
+	defer f.Close()
 	wantsChange, err := planModule(tf, f.Name(), destroy)
 	if err != nil {
 		return err
