@@ -324,7 +324,7 @@ func applyOrDestroy(tf *tfexec.Terraform, b ApplyBehavior, of OutputFormat, dest
 			return err
 		}
 	default:
-		panic("Unknown output format requested")
+		return fmt.Errorf("unknown output format requested: %v", of)
 	}
 
 	return nil

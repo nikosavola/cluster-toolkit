@@ -163,7 +163,9 @@ func (bp Blueprint) expandGroup(gp groupPath, g *Group) error {
 }
 
 func (bp Blueprint) expandModule(mp ModulePath, m *Module) error {
-	bp.applyUseModules(m)
+	if err := bp.applyUseModules(m); err != nil {
+		return err
+	}
 	bp.applyGlobalVarsInModule(m)
 	if err := expandHardwareSettings(bp, m); err != nil {
 		return err
@@ -323,8 +325,8 @@ func useModule(mod *Module, use Module) {
 func (bp Blueprint) applyUseModules(m *Module) error {
 	for _, u := range m.Use {
 		used, err := bp.Module(u)
-		if err != nil { // should never happen
-			panic(err)
+		if err != nil {
+			return fmt.Errorf("module %q used by %q not found: %w", u, m.ID, err)
 		}
 		useModule(m, *used)
 	}
