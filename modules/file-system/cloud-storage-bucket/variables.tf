@@ -65,7 +65,15 @@ variable "random_suffix" {
 }
 
 variable "force_destroy" {
-  description = "If true will destroy bucket with all objects stored within."
+  description = <<-EOT
+    If true, allows `terraform destroy` to delete the bucket along with ALL objects
+    stored within it. This is irreversible and will result in permanent data loss.
+
+    Leave this set to `false` (the default) for production or any bucket holding
+    persistent data, so that `terraform destroy` fails rather than silently deleting
+    your data when the bucket is not empty. Only set to `true` for ephemeral or
+    disposable buckets where deleting all contents on teardown is intended.
+    EOT
   type        = bool
   default     = false
 }
