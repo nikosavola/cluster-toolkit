@@ -761,11 +761,27 @@ def add_nodeset_topology(
     up_nodes = set()
     default_path = [_SLURM_TOPO_ROOT,  f"ns_{nodeset.nodeset_name}"]
 
+    # Memoize nodeset resolution. The resolved nodeset is fully determined by the
+    # node-name prefix (everything before the trailing `-<index>`), so instances
+    # sharing a prefix resolve identically. Caching by prefix avoids re-parsing
+    # the node name for every instance. The cache stores either the resolved
+    # nodeset name or _RESOLVE_FAILED, preserving the original try/except behavior.
+    _RESOLVE_FAILED = object()
+    nodeset_name_cache: Dict[str, Any] = {}
+
+    def resolve_nodeset_name(node_name: str) -> Any:
+        # Prefix is the node name minus its trailing numeric/range suffix; this
+        # matches how the underlying lookup derives the owning nodeset.
+        prefix = node_name.split(".")[0].rsplit("-", 1)[0]
+        if prefix not in nodeset_name_cache:
+            try:
+                nodeset_name_cache[prefix] = lkp.node_nodeset_name(node_name)
+            except Exception:
+                nodeset_name_cache[prefix] = _RESOLVE_FAILED
+        return nodeset_name_cache[prefix]
+
     for inst in lkp.instances().values():
-        try:
-            if lkp.node_nodeset_name(inst.name) != nodeset.nodeset_name:
-                continue
-        except Exception:
+        if resolve_nodeset_name(inst.name) != nodeset.nodeset_name:
             continue
 
         phys_host = inst.resource_status.physical_host or ""
