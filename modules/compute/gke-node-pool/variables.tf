@@ -54,7 +54,7 @@ variable "internal_ghpc_module_id" {
 }
 
 variable "machine_type" {
-  description = "The name of a Google Compute Engine machine type."
+  description = "The name of a Google Compute Engine machine type. The default (`c2-standard-60`) is a large, high-cost machine type suited to compute-intensive workloads that benefit from many cores per node; select a smaller machine type appropriate to your workload to avoid unnecessary cost."
   type        = string
   default     = "c2-standard-60"
 }

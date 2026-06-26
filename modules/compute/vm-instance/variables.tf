@@ -111,7 +111,7 @@ variable "disable_public_ips" {
 }
 
 variable "machine_type" {
-  description = "Machine type to use for the instance creation"
+  description = "Machine type to use for the instance creation. The default (`c2-standard-60`) is a large, high-cost machine type suited to tightly-coupled HPC workloads that benefit from many cores per node; select a smaller machine type appropriate to your workload to avoid unnecessary cost."
   type        = string
   default     = "c2-standard-60"
 }

@@ -63,7 +63,7 @@ variable "instance_template" { # tflint-ignore: terraform_unused_declarations
 }
 
 variable "machine_type" {
-  description = "Compute Platform machine type to use for this partition compute nodes."
+  description = "Compute Platform machine type to use for this partition compute nodes. The default (`c2-standard-60`) is a large, high-cost machine type suited to tightly-coupled HPC workloads that benefit from many cores per node; select a smaller machine type appropriate to your workload to avoid unnecessary cost."
   type        = string
   default     = "c2-standard-60"
 }
