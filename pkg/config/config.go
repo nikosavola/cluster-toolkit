@@ -39,6 +39,7 @@ import (
 	"golang.org/x/exp/maps"
 	"gopkg.in/yaml.v3"
 
+	"hpc-toolkit/pkg/logging"
 	"hpc-toolkit/pkg/modulereader"
 )
 
@@ -1029,7 +1030,13 @@ func getOrFetchCachedList(cacheFileName string, fetchFn func() []string) []strin
 			var cachedList []string
 			if err := json.Unmarshal(data, &cachedList); err == nil {
 				return cachedList // Cache hit and within TTL!
+			} else {
+				// Corrupt cache file: log and fall through to re-fetch.
+				logging.Warn("failed to parse cache file %q, ignoring cached data: %v", cacheFile, err)
 			}
+		} else {
+			// Existing cache file could not be read: log and fall through to re-fetch.
+			logging.Warn("failed to read cache file %q, ignoring cached data: %v", cacheFile, err)
 		}
 	}
 
@@ -1039,8 +1046,13 @@ func getOrFetchCachedList(cacheFileName string, fetchFn func() []string) []strin
 	// 4. Save the successfully fetched list to the cache file (resets the ModTime)
 	if len(fetchedList) > 0 {
 		if data, err := json.Marshal(fetchedList); err == nil {
-			_ = os.MkdirAll(filepath.Dir(cacheFile), 0755)
-			_ = os.WriteFile(cacheFile, data, 0644)
+			if err := os.MkdirAll(filepath.Dir(cacheFile), 0755); err != nil {
+				logging.Warn("failed to create cache directory %q: %v", filepath.Dir(cacheFile), err)
+			} else if err := os.WriteFile(cacheFile, data, 0644); err != nil {
+				logging.Warn("failed to write cache file %q: %v", cacheFile, err)
+			}
+		} else {
+			logging.Warn("failed to serialize data for cache file %q: %v", cacheFile, err)
 		}
 	}
 
