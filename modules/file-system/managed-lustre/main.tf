@@ -84,6 +84,15 @@ resource "google_lustre_instance" "lustre_instance" {
   depends_on = [var.private_vpc_connection_peering, data.google_storage_bucket.lustre_import_bucket]
 
   lifecycle {
+    # Guard against accidental destruction of the Lustre instance and its data.
+    # The pinned provider version (hashicorp/google >= 6.27.0) does not expose a
+    # native deletion_protection / deletion_policy argument for
+    # google_lustre_instance, so this safeguard is enforced at the Terraform
+    # level. prevent_destroy must be a literal and cannot be driven by a
+    # variable; to intentionally destroy the instance, set this to false (or
+    # remove the line) in this module before running terraform destroy.
+    prevent_destroy = true
+
     precondition {
       condition     = data.google_compute_network_peering.private_peering.state == "ACTIVE"
       error_message = "The subnetwork that the lustre instance is hosted on must have private service access."
