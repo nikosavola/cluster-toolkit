@@ -154,6 +154,11 @@ variable "autoscaling_total_min_nodes" {
     condition     = var.autoscaling_min_node_count == null || var.autoscaling_total_min_nodes == 0
     error_message = "autoscaling_total_min_nodes (global) is mutually exclusive with autoscaling_min_node_count (zonal). Please unset one of them."
   }
+
+  validation {
+    condition     = var.autoscaling_total_min_nodes >= 0
+    error_message = "autoscaling_total_min_nodes must be greater than or equal to 0."
+  }
 }
 
 variable "autoscaling_total_max_nodes" {
@@ -164,6 +169,16 @@ variable "autoscaling_total_max_nodes" {
   validation {
     condition     = var.autoscaling_max_node_count == null || var.autoscaling_total_max_nodes == 1000
     error_message = "autoscaling_total_max_nodes (global) is mutually exclusive with autoscaling_max_node_count (zonal). Please unset one of them."
+  }
+
+  validation {
+    condition     = var.autoscaling_total_max_nodes > 0
+    error_message = "autoscaling_total_max_nodes must be greater than 0."
+  }
+
+  validation {
+    condition     = var.autoscaling_total_max_nodes >= var.autoscaling_total_min_nodes
+    error_message = "autoscaling_total_max_nodes must be greater than or equal to autoscaling_total_min_nodes."
   }
 }
 
