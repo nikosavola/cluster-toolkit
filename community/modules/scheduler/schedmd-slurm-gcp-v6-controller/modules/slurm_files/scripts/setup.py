@@ -213,7 +213,12 @@ def setup_jwt_key():
     if jwt_key.exists():
         log.info("JWT key already exists. Skipping key generation.")
     else:
-        run("dd if=/dev/urandom bs=32 count=1 > " + str(jwt_key), shell=True)
+        with open(jwt_key, "wb") as f:
+            run(
+                "dd if=/dev/urandom bs=32 count=1",
+                stdout=f,
+                universal_newlines=False,
+            )
 
     util.chown_slurm(jwt_key, mode=0o400)
 

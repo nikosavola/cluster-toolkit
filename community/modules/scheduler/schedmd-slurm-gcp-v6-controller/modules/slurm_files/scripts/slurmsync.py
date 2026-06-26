@@ -199,7 +199,7 @@ def _find_tpu_node_action(nodename, state) -> NodeAction:
     if inst is None and tpuobj.vmcount > 1:
         # Get the tpu slurm nodelist of the nodes in the same tpu group as nodename
         nodelist = run(
-            f"{lkp.scontrol} show topo {nodename}"
+            f"{lkp.scontrol} show topo {shlex.quote(nodename)}"
             + " | awk -F'=' '/Level=0/ { print $NF }'",
             shell=True,
         ).stdout
