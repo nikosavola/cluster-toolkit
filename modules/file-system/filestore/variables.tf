@@ -72,6 +72,10 @@ variable "size_gb" {
     condition     = var.size_gb >= 1024
     error_message = "No Filestore tier supports less than 1024GiB.\nSee https://cloud.google.com/filestore/docs/service-tiers."
   }
+  validation {
+    condition     = var.size_gb <= 102400
+    error_message = "No Filestore tier supports more than 102400GiB (100 TiB, the maximum for ZONAL/REGIONAL large instances).\nPer-tier maximums are lower: BASIC_HDD/BASIC_SSD support up to 65433GiB (63.9 TiB).\nSee https://cloud.google.com/filestore/docs/service-tiers."
+  }
 }
 
 variable "filestore_tier" {
