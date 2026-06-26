@@ -380,14 +380,50 @@ def _get_failed_zonal_instance_inserts(bulk_op: Any, zone: str, lkp: util.Lookup
     ended = bulk_op["endTime"]
    
     fltr = f'(user eq "{user}") AND (operationType eq "insert") AND (creationTimestamp > "{started}") AND (creationTimestamp < "{ended}")'
+
+    # Number of failed inserts we expect in this zone, derived from the bulkInsert
+    # metadata (targetVmCount - createdVmCount). Used as an early-termination
+    # target so we stop paging once every failure has been gathered. A value of
+    # 0 (or missing metadata) disables target-based early stopping and we fall
+    # back to the hard page cap below.
+    expected_failures = 0
+    zone_status = (
+        bulk_op.get("instancesBulkInsertOperationMetadata", {})
+        .get("perLocationStatus", {})
+        .get(f"zones/{zone}", {})
+    )
+    if zone_status:
+        expected_failures = max(
+            0, zone_status.get("targetVmCount", 0) - zone_status.get("createdVmCount", 0)
+        )
+
+    # Bound the GCP API pagination: page size and a hard cap on pages so a
+    # large/slow result set cannot make this loop run unbounded.
+    PAGE_SIZE = 500
+    MAX_PAGES = 100
+
     act = lkp.compute.zoneOperations()
-    req = act.list(project=lkp.project, zone=zone, filter=fltr)
+    req = act.list(project=lkp.project, zone=zone, filter=fltr, maxResults=PAGE_SIZE)
     ops = []
+    pages = 0
     while req is not None:
         result = util.ensure_execute(req)
         for op in result.get("items", []):
             if op.get("operationGroupId") == group_id and "error" in op:
                 ops.append(op)
+        pages += 1
+        # Early stop: we found every failed insert we were looking for.
+        if expected_failures and len(ops) >= expected_failures:
+            break
+        # Hard cap: stop paging and make the truncation visible.
+        if pages >= MAX_PAGES:
+            log.warning(
+                f"_get_failed_zonal_instance_inserts: reached page cap "
+                f"({MAX_PAGES} pages of {PAGE_SIZE}) for operationGroupId={group_id} "
+                f"zone={zone}; results may be truncated "
+                f"(found {len(ops)} failed inserts, expected {expected_failures})"
+            )
+            break
         req = act.list_next(req, result)
     return ops
 
