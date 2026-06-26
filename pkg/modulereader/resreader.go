@@ -24,6 +24,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"sync"
+
 	"github.com/hashicorp/go-getter"
 	"github.com/zclconf/go-cty/cty"
 	"gopkg.in/yaml.v3"
@@ -118,8 +120,41 @@ type sourceAndKind struct {
 	kind   string
 }
 
+var modInfoCacheMu sync.RWMutex
 var modInfoCache = map[sourceAndKind]ModuleInfo{}
+
+var modDownloadCacheMu sync.RWMutex
 var modDownloadCache = map[string]string{} // Cache for downloaded module data
+
+// readModInfoCache returns the cached ModuleInfo for key, if present.
+func readModInfoCache(key sourceAndKind) (ModuleInfo, bool) {
+	modInfoCacheMu.RLock()
+	defer modInfoCacheMu.RUnlock()
+	mi, ok := modInfoCache[key]
+	return mi, ok
+}
+
+// writeModInfoCache stores the ModuleInfo for key.
+func writeModInfoCache(key sourceAndKind, info ModuleInfo) {
+	modInfoCacheMu.Lock()
+	defer modInfoCacheMu.Unlock()
+	modInfoCache[key] = info
+}
+
+// readModDownloadCache returns the cached module path for pkgAddr, if present.
+func readModDownloadCache(pkgAddr string) (string, bool) {
+	modDownloadCacheMu.RLock()
+	defer modDownloadCacheMu.RUnlock()
+	p, ok := modDownloadCache[pkgAddr]
+	return p, ok
+}
+
+// writeModDownloadCache stores the module path for pkgAddr.
+func writeModDownloadCache(pkgAddr string, pkgPath string) {
+	modDownloadCacheMu.Lock()
+	defer modDownloadCacheMu.Unlock()
+	modDownloadCache[pkgAddr] = pkgPath
+}
 
 // GetModuleInfo gathers information about a module at a given source using the
 // tfconfig package. It will add details about required APIs to be
@@ -127,7 +162,7 @@ var modDownloadCache = map[string]string{} // Cache for downloaded module data
 // There is a cache to avoid re-reading the module info for the same source and kind.
 func GetModuleInfo(source string, kind string) (ModuleInfo, error) {
 	key := sourceAndKind{source, kind}
-	if mi, ok := modInfoCache[key]; ok {
+	if mi, ok := readModInfoCache(key); ok {
 		return mi, nil
 	}
 
@@ -140,7 +175,7 @@ func GetModuleInfo(source string, kind string) (ModuleInfo, error) {
 		}
 	default:
 		pkgAddr, subDir := getter.SourceDirSubdir(source)
-		if cachedModPath, ok := modDownloadCache[pkgAddr]; ok {
+		if cachedModPath, ok := readModDownloadCache(pkgAddr); ok {
 			modPath = filepath.Join(cachedModPath, subDir)
 		} else {
 			tmpDir, err := os.MkdirTemp("", "module-*")
@@ -158,7 +193,7 @@ func GetModuleInfo(source string, kind string) (ModuleInfo, error) {
 				}
 				return ModuleInfo{}, err
 			}
-			modDownloadCache[pkgAddr] = pkgPath
+			writeModDownloadCache(pkgAddr, pkgPath)
 		}
 	}
 
@@ -168,14 +203,14 @@ func GetModuleInfo(source string, kind string) (ModuleInfo, error) {
 		return ModuleInfo{}, err
 	}
 	mi.Metadata = GetMetadataSafe(modPath)
-	modInfoCache[key] = mi
+	writeModInfoCache(key, mi)
 	return mi, nil
 }
 
 // SetModuleInfo sets the ModuleInfo for a given source and kind
 // NOTE: This is only used for testing
 func SetModuleInfo(source string, kind string, info ModuleInfo) {
-	modInfoCache[sourceAndKind{source, kind}] = info
+	writeModInfoCache(sourceAndKind{source, kind}, info)
 }
 
 // ModReader is a module reader interface
