@@ -40,14 +40,14 @@ jobs:
       pull-requests: read
     steps:
     - id: check-labels
-      uses: mheap/github-action-required-labels@v5
+      uses: mheap/github-action-required-labels@0ac283b4e65c1fb28ce6079dea5546ceca98ccbe # v5
       with:
         mode: minimum
         count: 1
         labels: "release-chore, release-key-new-features, release-new-modules, release-module-improvements, release-improvements, release-deprecations, release-version-updates, release-bugfix, release-breaking-changes"
         message: "This PR is being prevented from merging because it is not labeled.  Please add a label to this PR.  Accepted labels: release-chore, release-key-new-features, release-new-modules, release-module-improvements, release-improvements, release-deprecations, release-version-updates, release-bugfix, release-breaking-changes"
     - id: do-not-merge
-      uses: mheap/github-action-required-labels@v5
+      uses: mheap/github-action-required-labels@0ac283b4e65c1fb28ce6079dea5546ceca98ccbe # v5
       with:
         mode: exactly
         count: 0
