@@ -80,7 +80,7 @@ def _watch_op(lkp: util.Lookup, m: WatchDeleteVmOp_Message) -> bool:
 
     try:
         op = util.get_operation_req(lkp, m.op_name, zone=m.zone).execute()
-    except:
+    except Exception:
         # TODO: consider less conservative handling, but be careful not to cause deadlettering.
         log.exception(f"Failed to get operation {m.op_name}, will not retry")
         return True # ack (remove)

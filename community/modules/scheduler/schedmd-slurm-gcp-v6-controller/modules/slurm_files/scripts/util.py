@@ -397,7 +397,8 @@ def get_dev_key() -> Optional[str]:
         with open("/etc/slurm/slurm_vars.yaml", 'r') as file:
             data = yaml.safe_load(file)
             return data['google_developer_key']
-    except:
+    except (OSError, yaml.YAMLError, KeyError, TypeError) as e:
+        log.debug(f"Could not read dev key, continuing without it: {e}")
         return None
 
 
@@ -578,8 +579,9 @@ def file_list(prefix="", subpath="") -> List[os.DirEntry]:
     try:
         files = os.scandir(file_prefix)
         return [file for file in files if file.name.startswith(prefix)]
-    except:
-        return [] 
+    except OSError as e:
+        log.debug(f"Could not list files under {file_prefix}: {e}")
+        return []
      # Not considering lack of file's existence as fatal (we may check for files we know don't exist).
      # Responsibility of callee to determine if it is fatal or not, blob_list returns empty iterator in similar cases.
 
@@ -1917,7 +1919,7 @@ class Lookup:
         # In either of "unhappy" cases it's too dangerous to proceed - abort slurmsync.
         try:
             ns = self.node_nodeset(nodename)
-        except:
+        except KeyError:
             log.info(f"Unknown node {nodename}, belongs to unknown nodeset")
             return None # Can't find nodeset, may be belongs to removed nodeset
 
@@ -2310,7 +2312,7 @@ class Lookup:
             if nodeset.dws_flex.use_bulk_insert:
                 return False #For legacy flex support
             return bool(nodeset.dws_flex.enabled)
-        except:
+        except KeyError:
             return False
 
     def is_provisioning_flex_node(self, node:str) -> bool:

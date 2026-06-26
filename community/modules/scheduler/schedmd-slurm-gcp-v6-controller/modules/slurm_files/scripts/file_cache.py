@@ -75,6 +75,6 @@ def cache(name: str) -> FileCache | NoCache:
             path.mkdir(exist_ok=True, parents=True)
             _chown_slurm(path)
         return FileCache(path)
-    except:
-        log.exception(f"Failed to create cache, fallback to NoCache")
+    except Exception as e:
+        log.exception(f"Failed to create cache, fallback to NoCache: {e}")
         return NoCache()

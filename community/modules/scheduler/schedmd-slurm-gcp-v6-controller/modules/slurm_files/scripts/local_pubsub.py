@@ -124,8 +124,8 @@ class Subscription:
         log.debug(f"removing {id}")
         try:
             os.unlink(self._path / id)
-        except:
-            log.exception(f"Failed to remove message {id}")
+        except OSError as e:
+            log.exception(f"Failed to remove message {id}: {e}")
     
     def _read_msg(self, id: str) -> Message | None:
         try:

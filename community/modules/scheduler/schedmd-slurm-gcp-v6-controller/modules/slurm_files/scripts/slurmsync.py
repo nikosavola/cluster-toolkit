@@ -662,7 +662,7 @@ def sync_flex_migs(lkp: util.Lookup) -> None:
 def process_messages(lkp: util.Lookup) -> None:
     try:
         watch_delete_vm_op.watch_vm_delete_ops(lkp)
-    except:
+    except Exception:
         log.exception("failed during watching delete VM operations")
 
 
@@ -677,7 +677,7 @@ def main():
     if lkp.is_controller:
         try:
             process_messages(lkp)
-        except:
+        except Exception:
             log.exception("failed to process messages")
 
         try:

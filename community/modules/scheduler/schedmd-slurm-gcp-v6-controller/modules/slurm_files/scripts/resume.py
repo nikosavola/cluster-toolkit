@@ -567,7 +567,8 @@ def _allocate_nodes_to_placements(nodes: List[str], excl_job_id:Optional[int], l
         try:
             chunk = lkp.node_index(node) // max_count
             chunks[chunk].append(node)
-        except:
+        except (KeyError, ValueError) as e:
+            log.debug(f"Could not determine placement chunk for node {node}, treating as invalid: {e}")
             invalid.append(node)
     
     placements = [
