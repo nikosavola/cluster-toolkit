@@ -171,9 +171,20 @@ locals {
 }
 
 data "google_compute_zones" "available" {
-  for_each = toset([for mig in local.nodeset_migs : mig.region])
+  for_each = toset([for ns in local.nodeset_map : coalesce(ns.region, var.region)])
   project  = var.project_id
   region   = each.value
+
+  lifecycle {
+    postcondition {
+      condition = alltrue([
+        for ns in local.nodeset_map :
+        length(setsubtract([for z in ns.zone_policy_allow : z if z != null && z != ""], self.names)) == 0
+        if coalesce(ns.region, var.region) == each.value
+      ])
+      error_message = "A nodeset zone is not an available zone of ${each.value}: ${jsonencode(self.names)}"
+    }
+  }
 }
 
 resource "google_compute_resource_policy" "nodeset_workload_policy" {
@@ -293,7 +304,7 @@ locals {
     network_storage                  = ns.network_storage
     zone_target_shape                = ns.zone_target_shape
     zone_policy_allow                = ns.zone_policy_allow
-    zone_policy_deny                 = ns.zone_policy_deny
+    zone_policy_deny                 = setsubtract(data.google_compute_zones.available[coalesce(ns.region, var.region)].names, ns.zone_policy_allow)
     enable_maintenance_reservation   = ns.enable_maintenance_reservation
     enable_opportunistic_maintenance = ns.enable_opportunistic_maintenance
     accelerator_topology             = ns.accelerator_topology

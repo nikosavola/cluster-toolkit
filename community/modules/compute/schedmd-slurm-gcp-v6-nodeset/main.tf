@@ -155,7 +155,7 @@ locals {
 
     zone_target_shape = var.zone_target_shape
     zone_policy_allow = local.zones
-    zone_policy_deny  = local.zones_deny
+    zone_policy_deny  = toset([]) # derived by the controller from its per-region zones data source
 
     startup_script  = local.ghpc_startup_script
     network_storage = var.network_storage
@@ -166,23 +166,7 @@ locals {
 }
 
 locals {
-  zones      = setunion(var.zones, [var.zone])
-  zones_deny = setsubtract(data.google_compute_zones.available.names, local.zones)
-}
-
-data "google_compute_zones" "available" {
-  project = var.project_id
-  region  = var.region
-
-  lifecycle {
-    postcondition {
-      condition     = length(setsubtract(local.zones, self.names)) == 0
-      error_message = <<-EOD
-      Invalid zones=${jsonencode(setsubtract(local.zones, self.names))}
-      Available zones=${jsonencode(self.names)}
-      EOD
-    }
-  }
+  zones = setunion(var.zones, [var.zone])
 }
 
 locals {
