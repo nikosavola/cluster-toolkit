@@ -768,3 +768,25 @@ def test_get_reservation_details_error(mocker):
         )
     
     lkp._get_reservation.assert_called_once_with("my-project", "us-central1-a", "my-reservation")
+
+
+def test_fetch_config_downloads_keep_order():
+    from mock import patch
+    def blob(text):
+        return Mock(download_as_text=Mock(return_value=text))
+    blobs = Mock(
+        hash="new",
+        core=blob("slurm_cluster_name: m22"),
+        controller_addr=None,
+        partition=[],
+        nodeset=[blob(f"nodeset_name: ns{i}") for i in range(200)],
+        nodeset_dyn=[],
+        nodeset_tpu=[],
+        login_group=[],
+    )
+    with patch.object(util, "_list_config_blobs", return_value=blobs), \
+         patch.object(util, "_assemble_config", side_effect=lambda **kw: kw):
+        kw, h = util._fetch_config(old_hash="old")
+    assert h == "new"
+    assert kw["core"] == {"slurm_cluster_name": "m22"}
+    assert kw["nodesets"] == [{"nodeset_name": f"ns{i}"} for i in range(200)]

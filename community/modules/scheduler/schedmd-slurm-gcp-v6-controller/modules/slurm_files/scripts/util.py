@@ -818,7 +818,10 @@ def _fetch_config(old_hash: Optional[str]) -> Optional[Tuple[NSDict, str]]:
         return None
 
     def _download(bs) -> List[Any]:
-        return [yaml.safe_load(b.download_as_text()) for b in bs]
+        # One blob per nodeset; fetching thousands of them in sequence outlasts ResumeTimeout.
+        loader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+        with ThreadPoolExecutor(max_workers=32) as exe:
+            return list(exe.map(lambda b: yaml.load(b.download_as_text(), Loader=loader), bs))
 
     return _assemble_config(
         core=_download([blobs.core])[0],
