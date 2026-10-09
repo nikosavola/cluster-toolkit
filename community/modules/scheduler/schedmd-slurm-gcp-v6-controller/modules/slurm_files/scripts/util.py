@@ -1699,6 +1699,14 @@ class Lookup:
     def zone(self):
         return instance_metadata("zone")
 
+    @cached_property
+    def _nodeset_names(self) -> frozenset:
+        # _node_desc runs once per node; rebuilding this per call was O(nodes x nodesets).
+        return frozenset(
+            getattr(ns, "nodeset_name", None)
+            for ns in chain(self.cfg.nodeset.values(), self.cfg.nodeset_tpu.values(), self.cfg.nodeset_dyn.values())
+        )
+
     @lru_cache(maxsize=None)
     def _node_desc(self, node_name: str) -> dict:
         """Get parts from node name"""
@@ -1723,13 +1731,8 @@ class Lookup:
             raise Exception(f"node name {node_name} does not start with cluster name {cluster_name}")
             
         matched_ns = prefix[len(cluster_name)+1:]
-        
-        valid_nodesets = [
-            getattr(ns, "nodeset_name", None) 
-            for ns in chain(self.cfg.nodeset.values(), self.cfg.nodeset_tpu.values(), self.cfg.nodeset_dyn.values())
-        ]
-        
-        if matched_ns not in valid_nodesets:
+
+        if matched_ns not in self._nodeset_names:
             raise Exception(f"could not find nodeset {matched_ns} for node {node_name}")
             
         is_range = suffix.startswith("[") and suffix.endswith("]")
@@ -2364,7 +2367,9 @@ class Lookup:
 _lkp: Optional[Lookup] = None
 
 def _load_config() -> NSDict:
-    return NSDict(yaml.safe_load(CONFIG_FILE.read_text()))
+    # libyaml when available, the pure Python loader takes seconds on a big config.
+    loader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+    return NSDict(yaml.load(CONFIG_FILE.read_text(), Loader=loader))
 
 def lookup() -> Lookup:
     global _lkp
