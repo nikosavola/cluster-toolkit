@@ -821,7 +821,8 @@ def setup_compute():
     if not lkp.cfg.enable_slurm_auth:
       run("systemctl restart munge", timeout=30)
     run("systemctl enable slurmd", timeout=30)
-    run("systemctl restart slurmd", timeout=30)
+    # slurmd parses every NodeSet line at start, ~30 s with thousands of nodesets.
+    run("systemctl restart slurmd", timeout=300)
     run("systemctl enable --now slurmcmd.timer", timeout=30)
 
     log.info("Check status of cluster services")
