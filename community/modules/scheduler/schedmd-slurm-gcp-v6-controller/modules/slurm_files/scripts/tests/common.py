@@ -45,12 +45,15 @@ class TstNodeset:
     placement_max_distance: Optional[int] = None
     accelerator_topology: Optional[str] = ""
     future_reservation: Optional[str] = ""
+    subnetwork: Optional[str] = None
 
 @dataclass
 class TstPartition:
     partition_name: str = "euler"
     partition_nodeset: list[str] = field(default_factory=list)
     partition_nodeset_tpu: list[str] = field(default_factory=list)
+    partition_nodeset_dyn: list[str] = field(default_factory=list)
+    partition_conf: dict[str, Any] = field(default_factory=dict)
     enable_job_exclusive: bool = False
 
 @dataclass

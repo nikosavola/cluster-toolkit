@@ -16,7 +16,7 @@ limitations under the License.
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.12.2 |
 | <a name="requirement_archive"></a> [archive](#requirement\_archive) | ~> 2.0 |
 | <a name="requirement_google"></a> [google](#requirement\_google) | >= 6.41 |
@@ -26,7 +26,7 @@ limitations under the License.
 ## Providers
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="provider_archive"></a> [archive](#provider\_archive) | ~> 2.0 |
 | <a name="provider_google"></a> [google](#provider\_google) | >= 6.41 |
 | <a name="provider_local"></a> [local](#provider\_local) | ~> 2.0 |
@@ -39,7 +39,7 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [google_storage_bucket_object.config](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/storage_bucket_object) | resource |
 | [google_storage_bucket_object.controller_startup_scripts](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/storage_bucket_object) | resource |
 | [google_storage_bucket_object.devel](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/storage_bucket_object) | resource |
@@ -64,13 +64,13 @@ No modules.
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_accounting_storage_backup_host"></a> [accounting\_storage\_backup\_host](#input\_accounting\_storage\_backup\_host) | The backup accounting storage host. | `string` | `null` | no |
 | <a name="input_backup_controller_key_timeout"></a> [backup\_controller\_key\_timeout](#input\_backup\_controller\_key\_timeout) | The time in seconds for the backup controller to wait for the shared key to become available. | `number` | `300` | no |
 | <a name="input_bucket_dir"></a> [bucket\_dir](#input\_bucket\_dir) | Bucket directory for cluster files to be put into. | `string` | `null` | no |
 | <a name="input_bucket_name"></a> [bucket\_name](#input\_bucket\_name) | Name of GCS bucket to use. | `string` | n/a | yes |
 | <a name="input_cgroup_conf_tpl"></a> [cgroup\_conf\_tpl](#input\_cgroup\_conf\_tpl) | Slurm cgroup.conf template file path. | `string` | `null` | no |
-| <a name="input_cloud_parameters"></a> [cloud\_parameters](#input\_cloud\_parameters) | cloud.conf options. Default behavior defined in scripts/conf.py | <pre>object({<br/>    no_comma_params         = optional(bool, false)<br/>    private_data            = optional(list(string))<br/>    scheduler_parameters    = optional(list(string))<br/>    resume_rate             = optional(number)<br/>    resume_timeout          = optional(number)<br/>    suspend_rate            = optional(number)<br/>    suspend_timeout         = optional(number)<br/>    slurmd_timeout          = optional(number)<br/>    unkillable_step_timeout = optional(number)<br/>    topology_plugin         = optional(string)<br/>    topology_param          = optional(string)<br/>    tree_width              = optional(number)<br/>    prolog_flags            = optional(string)<br/>    switch_type             = optional(string)<br/>  })</pre> | `{}` | no |
+| <a name="input_cloud_parameters"></a> [cloud\_parameters](#input\_cloud\_parameters) | cloud.conf options. Default behavior defined in scripts/conf.py | <pre>object({<br/>    no_comma_params          = optional(bool, false)<br/>    private_data             = optional(list(string))<br/>    scheduler_parameters     = optional(list(string))<br/>    resume_rate              = optional(number)<br/>    resume_timeout           = optional(number)<br/>    suspend_rate             = optional(number)<br/>    suspend_timeout          = optional(number)<br/>    slurmd_timeout           = optional(number)<br/>    unkillable_step_timeout  = optional(number)<br/>    topology_plugin          = optional(string)<br/>    topology_param           = optional(string)<br/>    tree_width               = optional(number)<br/>    prolog_flags             = optional(string)<br/>    switch_type              = optional(string)<br/>    skip_nodeset_lines       = optional(bool, false)<br/>    topology_region_switches = optional(bool, false)<br/>  })</pre> | `{}` | no |
 | <a name="input_cloudsql_secret"></a> [cloudsql\_secret](#input\_cloudsql\_secret) | Secret URI to cloudsql secret. | `string` | `null` | no |
 | <a name="input_compute_startup_scripts_timeout"></a> [compute\_startup\_scripts\_timeout](#input\_compute\_startup\_scripts\_timeout) | The timeout (seconds) applied to each script in compute\_startup\_scripts. If<br/>any script exceeds this timeout, then the instance setup process is considered<br/>failed and handled accordingly.<br/><br/>NOTE: When set to 0, the timeout is considered infinite and thus disabled. | `number` | `300` | no |
 | <a name="input_controller_network_attachment"></a> [controller\_network\_attachment](#input\_controller\_network\_attachment) | SelfLink for NetworkAttachment to be attached to the controller, if any. | `string` | `null` | no |
@@ -122,7 +122,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_bucket_dir"></a> [bucket\_dir](#output\_bucket\_dir) | Path directory within `bucket_name` for Slurm cluster file storage. |
 | <a name="output_bucket_name"></a> [bucket\_name](#output\_bucket\_name) | GCS Bucket name of Slurm cluster file storage. |
 | <a name="output_config"></a> [config](#output\_config) | Cluster configuration. |
