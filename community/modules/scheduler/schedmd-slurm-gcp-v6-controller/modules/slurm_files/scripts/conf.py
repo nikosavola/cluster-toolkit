@@ -67,7 +67,7 @@ def cloud_param(lkp: util.Lookup, key: str, default: Any) -> Any:
     TODO: Simplify once NSDict is removed from the codebase.
     """
     params = lkp.cfg.cloud_parameters
-    if key not in params or params[key] is None:
+    if not params or key not in params or params[key] is None:
         return default
     return params[key]
 
