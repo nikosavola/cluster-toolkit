@@ -21,6 +21,7 @@ import (
 	"hpc-toolkit/pkg/config"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/zclconf/go-cty/cty"
 	"golang.org/x/exp/maps"
@@ -141,7 +142,25 @@ func TestProjectExists(projectID string) error {
 	return nil
 }
 
+type lookup[T any] struct {
+	val T
+	err error
+}
+
+// Zone and region lookups repeat for every module, cache them per project.
+var regionCache, zoneCache sync.Map
+
 func getRegion(projectID string, region string) (*compute.Region, error) {
+	key := projectID + "/" + region
+	if c, ok := regionCache.Load(key); ok {
+		return c.(lookup[*compute.Region]).val, c.(lookup[*compute.Region]).err
+	}
+	r, err := fetchRegion(projectID, region)
+	regionCache.Store(key, lookup[*compute.Region]{r, err})
+	return r, err
+}
+
+func fetchRegion(projectID string, region string) (*compute.Region, error) {
 	ctx := context.Background()
 	s, err := compute.NewService(ctx)
 	if err != nil {
@@ -161,6 +180,16 @@ func TestRegionExists(projectID string, region string) error {
 }
 
 func getZone(projectID string, zone string) (*compute.Zone, error) {
+	key := projectID + "/" + zone
+	if c, ok := zoneCache.Load(key); ok {
+		return c.(lookup[*compute.Zone]).val, c.(lookup[*compute.Zone]).err
+	}
+	z, err := fetchZone(projectID, zone)
+	zoneCache.Store(key, lookup[*compute.Zone]{z, err})
+	return z, err
+}
+
+func fetchZone(projectID string, zone string) (*compute.Zone, error) {
 	ctx := context.Background()
 	s, err := compute.NewService(ctx)
 	if err != nil {
@@ -581,14 +610,50 @@ func testResourceInZoneAvailability(
 	}
 
 	// 3. Case: Implicitly check all modules for this setting
+	// Many modules share a zone and resource, check each pair once.
+	seen := map[[2]string]error{}
 	return validateSettingsInModules(bp, globalZone, projectID, settingSuffix, resourceLabel, validatorName, func(z, name string, vName string) error {
-		return validateFn(s, projectID, z, name, vName)
+		k := [2]string{z, name}
+		if err, ok := seen[k]; ok {
+			return err
+		}
+		err := validateFn(s, projectID, z, name, vName)
+		seen[k] = err
+		return err
 	})
 }
 
 // testMachineTypeInZoneAvailability automatically validates machine types in modules
 func testMachineTypeInZoneAvailability(bp config.Blueprint, inputs config.Dict) error {
-	return testResourceInZoneAvailability(bp, inputs, "test_machine_type_in_zone", "machine_type", "machine type", validateMachineTypeInZone)
+	// One List per zone instead of a Get per machine type and zone. A type missing from the
+	// list still goes through the Get, so errors are reported the same way.
+	listed := map[string]map[string]bool{}
+	return testResourceInZoneAvailability(bp, inputs, "test_machine_type_in_zone", "machine_type", "machine type",
+		func(s *compute.Service, projectID, zone, machineType, vName string) error {
+			key := projectID + "/" + zone
+			names, ok := listed[key]
+			if !ok {
+				names = listMachineTypes(s, projectID, zone)
+				listed[key] = names
+			}
+			if names[machineType] {
+				return nil
+			}
+			return validateMachineTypeInZone(s, projectID, zone, machineType, vName)
+		})
+}
+
+func listMachineTypes(s *compute.Service, projectID, zone string) map[string]bool {
+	names := map[string]bool{}
+	// Best effort, a failed list falls back to the Get.
+	_ = s.MachineTypes.List(projectID, zone).Fields("items/name", "nextPageToken").Pages(context.Background(),
+		func(l *compute.MachineTypeList) error {
+			for _, mt := range l.Items {
+				names[mt.Name] = true
+			}
+			return nil
+		})
+	return names
 }
 
 // testDiskTypeInZoneAvailability automatically validates disk types in modules
