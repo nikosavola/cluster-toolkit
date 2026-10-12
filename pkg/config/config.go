@@ -132,16 +132,15 @@ func (g Group) Kind() ModuleKind {
 
 // Module return the module with the given ID
 func (bp *Blueprint) Module(id ModuleID) (*Module, error) {
-	var mod *Module
-	bp.WalkModulesSafe(func(_ ModulePath, m *Module) {
-		if m.ID == id {
-			mod = m
+	// Not WalkModules: building a ModulePath per module is slow and this runs once per `use`.
+	for ig := range bp.Groups {
+		for im := range bp.Groups[ig].Modules {
+			if m := &bp.Groups[ig].Modules[im]; m.ID == id {
+				return m, nil
+			}
 		}
-	})
-	if mod == nil {
-		return nil, UnknownModuleError{id}
 	}
-	return mod, nil
+	return nil, UnknownModuleError{id}
 }
 
 func HintSpelling(s string, dict []string, err error) error {
