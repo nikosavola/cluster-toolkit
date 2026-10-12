@@ -30,9 +30,11 @@ import (
 )
 
 var (
-	machineTypeCache sync.Map // map[string]*compute.MachineType
-	computeService   *compute.Service
-	computeOnce      sync.Once
+	machineTypeCache  sync.Map // map[string]*compute.MachineType
+	machineTypeListed sync.Map // map[string]bool, project/zone already listed
+	computeService    *compute.Service
+	computeOnce       sync.Once
+	computeInitErr    error
 	// getMachineType is overridden in tests.
 	getMachineType = GetMachineType
 )
@@ -141,18 +143,33 @@ func GetMachineType(project, zone, machineType string) (*compute.MachineType, er
 		return cached.(*compute.MachineType), nil
 	}
 
-	var initErr error
 	computeOnce.Do(func() {
 		s, err := compute.NewService(context.Background())
 		if err != nil {
-			initErr = fmt.Errorf("failed to initialize compute service: %w", err)
+			computeInitErr = fmt.Errorf("failed to initialize compute service: %w", err)
 			return
 		}
 		computeService = s
 	})
 
-	if initErr != nil {
-		return nil, initErr
+	if computeInitErr != nil {
+		return nil, computeInitErr
+	}
+
+	// One List per zone fills the cache for every machine type in it. A Get per machine type
+	// and zone means thousands of sequential API calls on blueprints with many nodesets.
+	if _, listed := machineTypeListed.LoadOrStore(project+"/"+zone, true); !listed {
+		// Best effort, a failed list falls back to the Get below.
+		_ = computeService.MachineTypes.List(project, zone).Pages(context.Background(),
+			func(l *compute.MachineTypeList) error {
+				for _, mt := range l.Items {
+					machineTypeCache.Store(fmt.Sprintf("%s/%s/%s", project, zone, mt.Name), mt)
+				}
+				return nil
+			})
+		if cached, ok := machineTypeCache.Load(cacheKey); ok {
+			return cached.(*compute.MachineType), nil
+		}
 	}
 
 	res, err := computeService.MachineTypes.Get(project, zone, machineType).Do()
@@ -323,6 +340,10 @@ func buildOutputConfigStruct(machineType string, mt *compute.MachineType) Output
 func ClearMachineTypeCache() {
 	machineTypeCache.Range(func(key, value interface{}) bool {
 		machineTypeCache.Delete(key)
+		return true
+	})
+	machineTypeListed.Range(func(key, _ interface{}) bool {
+		machineTypeListed.Delete(key)
 		return true
 	})
 }
