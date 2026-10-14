@@ -1697,7 +1697,8 @@ def host_lookup(host_name: str) -> str:
     return socket.gethostbyname(host_name)
 
 
-class Dumper(yaml.SafeDumper):
+# The pure-Python dumper takes seconds on config.yaml at large nodeset counts; output is identical
+class Dumper(getattr(yaml, "CSafeDumper", yaml.SafeDumper)):  # type: ignore
     """Add representers for pathlib.Path and NSDict for yaml serialization"""
 
     def __init__(self, *args, **kwargs):
