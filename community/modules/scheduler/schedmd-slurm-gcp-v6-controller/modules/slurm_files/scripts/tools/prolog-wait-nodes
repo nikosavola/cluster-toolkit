@@ -61,8 +61,9 @@ booting() {
 	local flags
 	flags="$(scontrol show node -o "${SLURM_JOB_NODELIST}" 2>/dev/null |
 		grep -o 'State=[^ ]*' | cut -d= -f2 | tr '+' '\n')"
-	# A failed node gets the job requeued, no point waiting for it
-	grep -qxE 'DOWN|DRAIN|FAIL' <<<"${flags}" && return 1
+	# A failed node gets the job requeued, and an idle one is no longer ours
+	# (a requeue doesn't stop this script), no point waiting for either
+	grep -qxE 'DOWN|DRAIN|FAIL|IDLE' <<<"${flags}" && return 1
 	# POWER_DOWN alone means "power off when idle", only these hold the launch
 	grep -qxE 'POWERING_UP|POWERED_DOWN' <<<"${flags}"
 }
