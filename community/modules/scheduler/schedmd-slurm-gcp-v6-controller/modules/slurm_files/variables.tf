@@ -393,6 +393,7 @@ variable "cloud_parameters" {
     switch_type              = optional(string)
     skip_nodeset_lines       = optional(bool, false)
     topology_region_switches = optional(bool, false)
+    prolog_wait_nodes        = optional(bool, false)
   })
   default  = {}
   nullable = false

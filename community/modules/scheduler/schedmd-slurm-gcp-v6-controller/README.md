@@ -385,6 +385,21 @@ can outlast its systemd start timeout. Two `cloud_parameters` options help:
         topology_region_switches: true
 ```
 
+## Faster Job Start On Powered-Down Nodes
+
+A job that resumes powered-down nodes stays `CONFIGURING` until `slurmctld`'s
+periodic check, which runs every 30 s, so it starts 0-30 s after its nodes have
+registered. Setting `cloud_parameters.prolog_wait_nodes: true` adds a
+`PrologSlurmctld` that waits for the job's nodes to register; `slurmctld`
+launches the job as soon as it exits. This also applies to `srun` and `salloc`.
+A multi-node batch job waits for all of its nodes, not just the first one.
+
+`slurmctld` runs the prolog for every job start, so this costs a short-lived
+process per job: a TCP connect for nodes that are already up, and one `scontrol`
+call every 30 s while nodes boot (at most 540 s). SchedMD advises against
+`PrologSlurmctld` for high-throughput clusters, so leave it off if you start
+many short jobs per second. It is ignored for hybrid clusters.
+
 ## Support
 
 The Cluster Toolkit team maintains the wrapper around the [slurm-on-gcp]
@@ -486,7 +501,7 @@ limitations under the License.
 | <a name="input_bucket_name"></a> [bucket\_name](#input\_bucket\_name) | Name of GCS bucket.<br/>Ignored when 'create\_bucket' is true. | `string` | `null` | no |
 | <a name="input_can_ip_forward"></a> [can\_ip\_forward](#input\_can\_ip\_forward) | Enable IP forwarding, for NAT instances for example. | `bool` | `false` | no |
 | <a name="input_cgroup_conf_tpl"></a> [cgroup\_conf\_tpl](#input\_cgroup\_conf\_tpl) | Slurm cgroup.conf template file path. | `string` | `null` | no |
-| <a name="input_cloud_parameters"></a> [cloud\_parameters](#input\_cloud\_parameters) | cloud.conf options. Defaults inherited from [Slurm GCP repo](https://github.com/GoogleCloudPlatform/slurm-gcp/blob/master/terraform/slurm_cluster/modules/slurm_files/README_TF.md#input_cloud_parameters) | <pre>object({<br/>    no_comma_params          = optional(bool, false)<br/>    private_data             = optional(list(string))<br/>    scheduler_parameters     = optional(list(string))<br/>    resume_rate              = optional(number)<br/>    resume_timeout           = optional(number)<br/>    suspend_rate             = optional(number)<br/>    suspend_timeout          = optional(number)<br/>    slurmd_timeout           = optional(number)<br/>    unkillable_step_timeout  = optional(number)<br/>    topology_plugin          = optional(string)<br/>    topology_param           = optional(string)<br/>    tree_width               = optional(number)<br/>    prolog_flags             = optional(string)<br/>    switch_type              = optional(string)<br/>    skip_nodeset_lines       = optional(bool, false)<br/>    topology_region_switches = optional(bool, false)<br/>  })</pre> | `{}` | no |
+| <a name="input_cloud_parameters"></a> [cloud\_parameters](#input\_cloud\_parameters) | cloud.conf options. Defaults inherited from [Slurm GCP repo](https://github.com/GoogleCloudPlatform/slurm-gcp/blob/master/terraform/slurm_cluster/modules/slurm_files/README_TF.md#input_cloud_parameters) | <pre>object({<br/>    no_comma_params          = optional(bool, false)<br/>    private_data             = optional(list(string))<br/>    scheduler_parameters     = optional(list(string))<br/>    resume_rate              = optional(number)<br/>    resume_timeout           = optional(number)<br/>    suspend_rate             = optional(number)<br/>    suspend_timeout          = optional(number)<br/>    slurmd_timeout           = optional(number)<br/>    unkillable_step_timeout  = optional(number)<br/>    topology_plugin          = optional(string)<br/>    topology_param           = optional(string)<br/>    tree_width               = optional(number)<br/>    prolog_flags             = optional(string)<br/>    switch_type              = optional(string)<br/>    skip_nodeset_lines       = optional(bool, false)<br/>    topology_region_switches = optional(bool, false)<br/>    prolog_wait_nodes        = optional(bool, false)<br/>  })</pre> | `{}` | no |
 | <a name="input_cloudsql"></a> [cloudsql](#input\_cloudsql) | Use this database instead of the one on the controller.<br/>  server\_ip : Address of the database server.<br/>  user      : The user to access the database as.<br/>  password  : The password, given the user, to access the given database. (sensitive)<br/>  db\_name   : The database to access.<br/>  user\_managed\_replication : The list of location and (optional) kms\_key\_name for secret | <pre>object({<br/>    server_ip = string<br/>    user      = string<br/>    password  = string # sensitive<br/>    db_name   = string<br/>    user_managed_replication = optional(list(object({<br/>      location     = string<br/>      kms_key_name = optional(string)<br/>    })), [])<br/>  })</pre> | `null` | no |
 | <a name="input_compute_startup_script"></a> [compute\_startup\_script](#input\_compute\_startup\_script) | DEPRECATED: `compute_startup_script` has been deprecated.<br/>Use `startup_script` of nodeset module instead. | `any` | `null` | no |
 | <a name="input_compute_startup_scripts_timeout"></a> [compute\_startup\_scripts\_timeout](#input\_compute\_startup\_scripts\_timeout) | The timeout (seconds) applied to each startup script in compute nodes. If<br/>any script exceeds this timeout, then the instance setup process is considered<br/>failed and handled accordingly.<br/><br/>NOTE: When set to 0, the timeout is considered infinite and thus disabled. | `number` | `300` | no |

@@ -591,3 +591,27 @@ def test_v2605_generator_tpu_vs_cpu(mock_slurm_version, tmp_path):
     topo_by_name = {entry["topology"]: entry for entry in topo_sections}
     assert conf_v2605.TOPOLOGY_TPU_BLOCK in topo_by_name
     assert topo_by_name[conf_v2605.TOPOLOGY_TPU_BLOCK]["block"]["block_sizes"] == [1]
+
+@pytest.mark.parametrize("version", ["24.11", "25.11", "26.05"])
+@pytest.mark.parametrize("enabled", [True, False])
+@mock.patch('util.Lookup.slurm_version', new_callable=mock.PropertyMock)
+def test_conflines_prolog_wait_nodes(mock_slurm_version, enabled, version):
+    cfg = TstCfg(install_dir="ukulele", cloud_parameters={"prolog_wait_nodes": enabled})
+    cfg.cloud_parameters = NSDict(cfg.cloud_parameters)
+    mock_slurm_version.return_value = version
+    lkp = util.Lookup(cfg)
+    lkp.template_info = mock.Mock(return_value=TstTemplateInfo(gpu=None))
+
+    res = conf.conflines(lkp)
+    line = "PrologSlurmctld=/slurm/custom_scripts/prolog_slurmctld.d/prolog-wait-nodes"
+    assert (line in res.splitlines()) == enabled
+
+
+@mock.patch('util.Lookup.slurm_version', new_callable=mock.PropertyMock)
+def test_conflines_prolog_wait_nodes_hybrid(mock_slurm_version):
+    cfg = TstCfg(install_dir="ukulele", hybrid=True, cloud_parameters={"prolog_wait_nodes": True})
+    cfg.cloud_parameters = NSDict(cfg.cloud_parameters)
+    mock_slurm_version.return_value = "25.11"
+    lkp = util.Lookup(cfg)
+    lkp.template_info = mock.Mock(return_value=TstTemplateInfo(gpu=None))
+    assert "PrologSlurmctld" not in conf.conflines(lkp)

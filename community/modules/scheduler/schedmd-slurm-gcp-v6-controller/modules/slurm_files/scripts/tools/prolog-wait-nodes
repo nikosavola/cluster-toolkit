@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# PrologSlurmctld that returns once the job's nodes have registered.
+#
+# A job on powered-down nodes stays CONFIGURING until slurmctld's periodic
+# job_time_limit() pass, which runs every 30 s. When a PrologSlurmctld exits,
+# slurmctld checks the nodes right away and launches the job if they are up.
+#
+# Exiting early is always safe: the job then just waits for the periodic pass.
+# It must exit 0 though, a failing or timed out PrologSlurmctld requeues the job,
+# so the wait stays under a 600 s PrologEpilogTimeout.
+
+export PATH="/usr/local/bin:/usr/bin:/bin:${PATH}"
+
+timeout_s="${WAIT_NODES_TIMEOUT:-540}"
+slurmd_port="${WAIT_NODES_SLURMD_PORT:-6818}"
+scontrol_every="${WAIT_NODES_SCONTROL_EVERY:-30}"
+
+[[ -n "${SLURM_JOB_NODELIST}" ]] || exit 0
+
+# Expands "a-[0-2,5],b-1" without scontrol, which parses the whole cluster
+# config on every call. Prints nothing for forms it doesn't handle.
+expand_hostlist() {
+	local item pre suf part lo hi n
+	local -a parts
+	while read -r item; do
+		[[ -n "${item}" ]] || continue
+		if [[ "${item}" =~ ^([^][]*)\[([0-9,-]+)\]([^][]*)$ ]]; then
+			pre="${BASH_REMATCH[1]}" suf="${BASH_REMATCH[3]}"
+			IFS=, read -ra parts <<<"${BASH_REMATCH[2]}"
+			for part in "${parts[@]}"; do
+				lo="${part%-*}" hi="${part#*-}"
+				for ((n = 10#${lo}; n <= 10#${hi}; n++)); do
+					printf '%s%0*d%s\n' "${pre}" "${#lo}" "${n}" "${suf}"
+				done
+			done
+		elif [[ "${item}" != *[][]* ]]; then
+			echo "${item}"
+		else
+			return 1
+		fi
+	done < <(awk -v s="$1" 'BEGIN { for (i = 1; i <= length(s); i++) {
+		c = substr(s, i, 1); if (c == "[") d++; if (c == "]") d--
+		printf "%s", (c == "," && d == 0) ? "\n" : c } print "" }')
+}
+
+booting() {
+	local flags
+	flags="$(scontrol show node -o "${SLURM_JOB_NODELIST}" 2>/dev/null |
+		grep -o 'State=[^ ]*' | cut -d= -f2 | tr '+' '\n')"
+	# A failed node gets the job requeued, and an idle one is no longer ours
+	# (a requeue doesn't stop this script), no point waiting for either
+	grep -qxE 'DOWN|DRAIN|FAIL|IDLE' <<<"${flags}" && return 1
+	# POWER_DOWN alone means "power off when idle", only these hold the launch
+	grep -qxE 'POWERING_UP|POWERED_DOWN' <<<"${flags}"
+}
+
+# slurmd registers right after it starts listening, and probing the port is cheap
+slurmd_listening() {
+	local host
+	for host in ${hosts}; do
+		timeout 1 bash -c "exec 3<>/dev/tcp/${host}/${slurmd_port}" 2>/dev/null || return 1
+	done
+}
+
+hosts="$(expand_hostlist "${SLURM_JOB_NODELIST}")" && [[ -n "${hosts}" ]] ||
+	hosts="$(scontrol show hostnames "${SLURM_JOB_NODELIST}" 2>/dev/null)" || exit 0
+
+# Nodes that were already up: nothing to wait for and no scontrol call
+slurmd_listening && exit 0
+
+deadline=$((SECONDS + timeout_s))
+next_check=$((SECONDS + scontrol_every))
+while ((SECONDS < deadline)); do
+	sleep 1
+	if slurmd_listening || ((SECONDS >= next_check)); then
+		booting || break
+		next_check=$((SECONDS + scontrol_every))
+	fi
+done
+exit 0

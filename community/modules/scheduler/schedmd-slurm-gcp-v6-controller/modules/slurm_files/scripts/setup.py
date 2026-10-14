@@ -479,7 +479,9 @@ def configure_dirs():
                                  (dirs.custom_scripts / "task_prolog.d",
                                   Path("tools/task-prolog")),
                                  (dirs.custom_scripts / "task_epilog.d",
-                                  Path("tools/task-epilog"))):
+                                  Path("tools/task-epilog")),
+                                 (dirs.custom_scripts / "prolog_slurmctld.d",
+                                  Path("tools/prolog-wait-nodes"))):
         dst = Path(dst_folder) / src_file.name
         util.mkdirp(dst.parent)
         shutil.copyfile(util.scripts_dir / src_file, dst)
