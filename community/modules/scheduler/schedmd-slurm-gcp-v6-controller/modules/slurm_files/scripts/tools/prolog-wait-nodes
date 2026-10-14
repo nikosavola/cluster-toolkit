@@ -20,21 +20,47 @@
 # slurmctld checks the nodes right away and launches the job if they are up.
 #
 # Exiting early is always safe: the job then just waits for the periodic pass.
-# It must exit 0 though, a failing PrologSlurmctld requeues the job.
+# It must exit 0 though, a failing or timed out PrologSlurmctld requeues the job,
+# so the wait stays under a 600 s PrologEpilogTimeout.
 
 export PATH="/usr/local/bin:/usr/bin:/bin:${PATH}"
 
-timeout_s="${WAIT_NODES_TIMEOUT:-1800}"
+timeout_s="${WAIT_NODES_TIMEOUT:-540}"
 slurmd_port="${WAIT_NODES_SLURMD_PORT:-6818}"
-scontrol_every="${WAIT_NODES_SCONTROL_EVERY:-5}"
+scontrol_every="${WAIT_NODES_SCONTROL_EVERY:-30}"
 
 [[ -n "${SLURM_JOB_NODELIST}" ]] || exit 0
 
-# Each scontrol call parses the full cluster config, so keep these rare
+# Expands "a-[0-2,5],b-1" without scontrol, which parses the whole cluster
+# config on every call. Prints nothing for forms it doesn't handle.
+expand_hostlist() {
+	local item pre suf part lo hi n
+	local -a parts
+	while read -r item; do
+		[[ -n "${item}" ]] || continue
+		if [[ "${item}" =~ ^([^][]*)\[([0-9,-]+)\]([^][]*)$ ]]; then
+			pre="${BASH_REMATCH[1]}" suf="${BASH_REMATCH[3]}"
+			IFS=, read -ra parts <<<"${BASH_REMATCH[2]}"
+			for part in "${parts[@]}"; do
+				lo="${part%-*}" hi="${part#*-}"
+				for ((n = 10#${lo}; n <= 10#${hi}; n++)); do
+					printf '%s%0*d%s\n' "${pre}" "${#lo}" "${n}" "${suf}"
+				done
+			done
+		elif [[ "${item}" != *[][]* ]]; then
+			echo "${item}"
+		else
+			return 1
+		fi
+	done < <(awk -v s="$1" 'BEGIN { for (i = 1; i <= length(s); i++) {
+		c = substr(s, i, 1); if (c == "[") d++; if (c == "]") d--
+		printf "%s", (c == "," && d == 0) ? "\n" : c } print "" }')
+}
+
 booting() {
 	local flags
 	flags="$(scontrol show node -o "${SLURM_JOB_NODELIST}" 2>/dev/null |
-		grep -o 'State=[^ ]*' | cut -d= -f2 | tr '+' '\n')" || return 1
+		grep -o 'State=[^ ]*' | cut -d= -f2 | tr '+' '\n')"
 	# A failed node gets the job requeued, no point waiting for it
 	grep -qxE 'DOWN|DRAIN|FAIL' <<<"${flags}" && return 1
 	# POWER_DOWN alone means "power off when idle", only these hold the launch
@@ -49,15 +75,19 @@ slurmd_listening() {
 	done
 }
 
-booting || exit 0
-hosts="$(scontrol show hostnames "${SLURM_JOB_NODELIST}" 2>/dev/null)" || exit 0
+hosts="$(expand_hostlist "${SLURM_JOB_NODELIST}")" && [[ -n "${hosts}" ]] ||
+	hosts="$(scontrol show hostnames "${SLURM_JOB_NODELIST}" 2>/dev/null)" || exit 0
+
+# Nodes that were already up: nothing to wait for and no scontrol call
+slurmd_listening && exit 0
 
 deadline=$((SECONDS + timeout_s))
+next_check=$((SECONDS + scontrol_every))
 while ((SECONDS < deadline)); do
-	for ((i = 0; i < scontrol_every; i++)); do
-		sleep 1
-		slurmd_listening && break
-	done
-	booting || break
+	sleep 1
+	if slurmd_listening || ((SECONDS >= next_check)); then
+		booting || break
+		next_check=$((SECONDS + scontrol_every))
+	fi
 done
 exit 0

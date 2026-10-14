@@ -392,6 +392,7 @@ periodic check, which runs every 30 s, so it starts 0-30 s after its nodes have
 registered. Setting `cloud_parameters.prolog_wait_nodes: true` adds a
 `PrologSlurmctld` that waits for the job's nodes to register; `slurmctld`
 launches the job as soon as it exits. This also applies to `srun` and `salloc`.
+A multi-node batch job waits for all of its nodes, not just the first one.
 
 ## Support
 
