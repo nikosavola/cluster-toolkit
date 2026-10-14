@@ -107,8 +107,15 @@ _PROC_LOCKS = Path("/proc/locks")
 def _rpm_transaction_running() -> bool:
     if not _RPM_LOCK.exists():
         return False
+    st = _RPM_LOCK.stat()
     # /proc/locks lists each held lock's file as MAJ:MIN:INODE
-    return f":{_RPM_LOCK.stat().st_ino} " in _PROC_LOCKS.read_text()
+    return f" {os.major(st.st_dev):02x}:{os.minor(st.st_dev):02x}:{st.st_ino} " in _PROC_LOCKS.read_text()
+
+
+def _dnf_automatic_running() -> bool:
+    # A running oneshot unit is "activating", which `systemctl is-active` reports as inactive
+    state = run("systemctl show -p ActiveState --value dnf-automatic.service", check=False, timeout=30).stdout.strip()
+    return state in ("activating", "active")
 
 
 def disable_automatic_updates():
@@ -131,16 +138,27 @@ def disable_automatic_updates():
         run(f"systemctl disable --now {unit}", check=False, timeout=30)
     _DNF_AUTOMATIC_STAMP.unlink(missing_ok=True)
 
-    if run("systemctl is-active --quiet dnf-automatic.service", check=False, timeout=30).returncode != 0:
+    if not _dnf_automatic_running():
         return
-    # Frozen, it can't start installing between the lock check and the kill
+    # Frozen, it can't start installing between the lock check and the interrupt
     run("systemctl kill --signal=SIGSTOP dnf-automatic.service", check=False, timeout=30)
-    if _rpm_transaction_running():
-        log.info("dnf-automatic is already installing packages, letting it finish")
+    try:
+        if _rpm_transaction_running():
+            log.info("dnf-automatic is already installing packages, letting it finish")
+            return
+        log.info("Stopping dnf-automatic before it installs anything")
+        # SIGINT lets dnf close the rpmdb, a SIGKILL can leave its Berkeley DB environment locked
+        run("systemctl kill --signal=SIGINT dnf-automatic.service", check=False, timeout=30)
+    finally:
         run("systemctl kill --signal=SIGCONT dnf-automatic.service", check=False, timeout=30)
-        return
-    log.info("Stopping dnf-automatic before it installs anything")
-    run("systemctl kill --signal=SIGKILL dnf-automatic.service", check=False, timeout=30)
+
+    for _ in range(20):
+        if not _dnf_automatic_running():
+            break
+        time.sleep(0.5)
+    else:
+        log.warning("dnf-automatic ignored SIGINT, killing it")
+        run("systemctl kill --signal=SIGKILL dnf-automatic.service", check=False, timeout=30)
     run("systemctl reset-failed dnf-automatic.service", check=False, timeout=30)
 
 
