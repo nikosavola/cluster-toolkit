@@ -112,10 +112,51 @@ def _rpm_transaction_running() -> bool:
     return f" {os.major(st.st_dev):02x}:{os.minor(st.st_dev):02x}:{st.st_ino} " in _PROC_LOCKS.read_text()
 
 
-def _dnf_automatic_running() -> bool:
+_UPDATE_SERVICES = (
+    "dnf-automatic.service",
+    "dnf-automatic-download.service",
+    "dnf-automatic-install.service",
+)
+
+
+def _update_running(unit: str) -> bool:
     # A running oneshot unit is "activating", which `systemctl is-active` reports as inactive
-    state = run("systemctl show -p ActiveState --value dnf-automatic.service", check=False, timeout=30).stdout.strip()
+    state = run(f"systemctl show -p ActiveState --value {unit}", check=False, timeout=30).stdout.strip()
     return state in ("activating", "active")
+
+
+def _wait_update_done(unit: str, seconds: int) -> bool:
+    for _ in range(seconds * 2):
+        if not _update_running(unit):
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def _stop_update_run(unit: str):
+    # Frozen, it can't start installing between the lock check and the interrupt
+    run(f"systemctl kill --signal=SIGSTOP {unit}", check=False, timeout=30)
+    try:
+        if _rpm_transaction_running():
+            log.info(f"{unit} is already installing packages, waiting for it")
+            installing = True
+        else:
+            log.info(f"Stopping {unit} before it installs anything")
+            installing = False
+            # SIGINT lets dnf close the rpmdb, a SIGKILL can leave its Berkeley DB environment locked
+            run(f"systemctl kill --signal=SIGINT {unit}", check=False, timeout=30)
+    finally:
+        run(f"systemctl kill --signal=SIGCONT {unit}", check=False, timeout=30)
+
+    if installing:
+        # Keep the first job from starting while packages like glibc are swapped
+        if not _wait_update_done(unit, 300):
+            log.warning(f"{unit} still installing, continuing setup")
+        return
+    if not _wait_update_done(unit, 10):
+        log.warning(f"{unit} ignored SIGINT, killing it")
+        run(f"systemctl kill --signal=SIGKILL {unit}", check=False, timeout=30)
+    run(f"systemctl reset-failed {unit}", check=False, timeout=30)
 
 
 def disable_automatic_updates():
@@ -138,29 +179,9 @@ def disable_automatic_updates():
         run(f"systemctl disable --now {unit}", check=False, timeout=30)
     _DNF_AUTOMATIC_STAMP.unlink(missing_ok=True)
 
-    if not _dnf_automatic_running():
-        return
-    # Frozen, it can't start installing between the lock check and the interrupt
-    run("systemctl kill --signal=SIGSTOP dnf-automatic.service", check=False, timeout=30)
-    try:
-        if _rpm_transaction_running():
-            log.info("dnf-automatic is already installing packages, letting it finish")
-            return
-        log.info("Stopping dnf-automatic before it installs anything")
-        # SIGINT lets dnf close the rpmdb, a SIGKILL can leave its Berkeley DB environment locked
-        run("systemctl kill --signal=SIGINT dnf-automatic.service", check=False, timeout=30)
-    finally:
-        run("systemctl kill --signal=SIGCONT dnf-automatic.service", check=False, timeout=30)
-
-    for _ in range(20):
-        if not _dnf_automatic_running():
-            break
-        time.sleep(0.5)
-    else:
-        log.warning("dnf-automatic ignored SIGINT, killing it")
-        run("systemctl kill --signal=SIGKILL dnf-automatic.service", check=False, timeout=30)
-    run("systemctl reset-failed dnf-automatic.service", check=False, timeout=30)
-
+    for unit in _UPDATE_SERVICES:
+        if _update_running(unit):
+            _stop_update_run(unit)
 
 def start_motd():
     """advise in motd that slurm is currently configuring"""

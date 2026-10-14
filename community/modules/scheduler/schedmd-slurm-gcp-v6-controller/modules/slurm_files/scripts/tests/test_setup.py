@@ -66,11 +66,13 @@ def _lock_line(lock, dev=None):
     return f"1: POSIX  ADVISORY  WRITE 4242 {os.major(dev):02x}:{os.minor(dev):02x}:{st.st_ino} 0 EOF\n"
 
 
-def _auto_update_calls(metadata, states, auto_update_paths):
-    """states: ActiveState answers for each `systemctl show`, the last one repeats"""
+def _auto_update_calls(metadata, states, auto_update_paths, unit="dnf-automatic.service"):
+    """states: ActiveState answers for `unit`, the last one repeats; other units are inactive"""
     states = list(states)
     def fake_run(cmd, **kwargs):
         if cmd.startswith("systemctl show"):
+            if not cmd.endswith(f" {unit}"):
+                return Mock(returncode=0, stdout="inactive")
             return Mock(returncode=0, stdout=states.pop(0) if len(states) > 1 else states[0])
         return Mock(returncode=0, stdout="")
     with patch.object(util, "get_metadata", return_value=metadata), \
@@ -104,11 +106,20 @@ def test_disable_automatic_updates_kills_stubborn_dnf(auto_update_paths):
     assert _signals(calls) == ["SIGSTOP", "SIGINT", "SIGCONT", "SIGKILL"]
 
 
-def test_disable_automatic_updates_lets_transaction_finish(auto_update_paths):
+def test_disable_automatic_updates_waits_for_transaction(auto_update_paths):
     lock, proc_locks = auto_update_paths
     proc_locks.write_text(_lock_line(lock))
-    calls = _auto_update_calls("TRUE", ["activating"], auto_update_paths)
+    calls = _auto_update_calls("TRUE", ["activating"] * 5 + ["inactive"], auto_update_paths)
     assert _signals(calls) == ["SIGSTOP", "SIGCONT"]
+    assert calls.count("systemctl show -p ActiveState --value dnf-automatic.service") == 6
+
+
+def test_disable_automatic_updates_handles_install_variant(auto_update_paths):
+    calls = _auto_update_calls("TRUE", ["activating", "activating", "failed"], auto_update_paths,
+                               unit="dnf-automatic-install.service")
+    kills = [c for c in calls if "--signal=" in c]
+    assert kills[0] == "systemctl kill --signal=SIGSTOP dnf-automatic-install.service"
+    assert _signals(calls) == ["SIGSTOP", "SIGINT", "SIGCONT"]
 
 
 def test_rpm_lock_on_other_device_is_ignored(auto_update_paths):
