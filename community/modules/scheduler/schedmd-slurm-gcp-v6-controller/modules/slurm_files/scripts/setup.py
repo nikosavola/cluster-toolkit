@@ -91,6 +91,59 @@ SSSSSSSSSSSS    SSS    SSSSSSSSSSSSS    SSSS        SSSS     SSSS     SSSS
 """
 _MAINTENANCE_SBATCH_SCRIPT_PATH = dirs.custom_scripts / "perform_maintenance.sh"
 
+_AUTO_UPDATE_UNITS = (
+    "google-osconfig-agent.service",
+    "dnf-automatic.timer",
+    "dnf-makecache.timer",
+    "dnf-automatic-download.timer",
+    "dnf-automatic-install.timer",
+)
+_DNF_AUTOMATIC_SERVICE = Path("/usr/lib/systemd/system/dnf-automatic.service")
+_DNF_AUTOMATIC_STAMP = Path("/var/lib/systemd/timers/stamp-dnf-automatic.timer")
+_RPM_LOCK = Path("/var/lib/rpm/.rpm.lock")
+_PROC_LOCKS = Path("/proc/locks")
+
+
+def _rpm_transaction_running() -> bool:
+    if not _RPM_LOCK.exists():
+        return False
+    # /proc/locks lists each held lock's file as MAJ:MIN:INODE
+    return f":{_RPM_LOCK.stat().st_ino} " in _PROC_LOCKS.read_text()
+
+
+def disable_automatic_updates():
+    """Apply google_disable_automatic_updates=TRUE (allow_automatic_updates: false).
+
+    The HPC image applies it in google-hpc-firstrun.service, but that only runs
+    while /.google_hpc_firstrun exists and the slurm-gcp image build already
+    consumed it, so dnf-automatic upgrades packages on every boot alongside
+    setup and the first job.
+    """
+    try:
+        if util.get_metadata("instance/attributes/google_disable_automatic_updates", silent=True) != "TRUE":
+            return
+    except util.MetadataNotFoundError:
+        return
+    if not _DNF_AUTOMATIC_SERVICE.exists():
+        return
+
+    for unit in _AUTO_UPDATE_UNITS:
+        run(f"systemctl disable --now {unit}", check=False, timeout=30)
+    _DNF_AUTOMATIC_STAMP.unlink(missing_ok=True)
+
+    if run("systemctl is-active --quiet dnf-automatic.service", check=False, timeout=30).returncode != 0:
+        return
+    # Frozen, it can't start installing between the lock check and the kill
+    run("systemctl kill --signal=SIGSTOP dnf-automatic.service", check=False, timeout=30)
+    if _rpm_transaction_running():
+        log.info("dnf-automatic is already installing packages, letting it finish")
+        run("systemctl kill --signal=SIGCONT dnf-automatic.service", check=False, timeout=30)
+        return
+    log.info("Stopping dnf-automatic before it installs anything")
+    run("systemctl kill --signal=SIGKILL dnf-automatic.service", check=False, timeout=30)
+    run("systemctl reset-failed dnf-automatic.service", check=False, timeout=30)
+
+
 def start_motd():
     """advise in motd that slurm is currently configuring"""
     wall_msg = "*** Slurm is currently being configured in the background. ***"
@@ -1096,6 +1149,10 @@ def setup_hybrid(bucket: str):
 
 def main():
     start_motd()
+    try:
+        disable_automatic_updates()
+    except Exception:
+        log.exception("Failed to disable automatic updates")
 
     log.info("Starting setup, fetching config")
     get_config()
