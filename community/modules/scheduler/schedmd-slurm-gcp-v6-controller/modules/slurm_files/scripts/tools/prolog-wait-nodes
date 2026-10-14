@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# PrologSlurmctld that returns once the job's nodes have registered.
+#
+# A job on powered-down nodes stays CONFIGURING until slurmctld's periodic
+# job_time_limit() pass, which runs every 30 s. When a PrologSlurmctld exits,
+# slurmctld checks the nodes right away and launches the job if they are up.
+#
+# Exiting early is always safe: the job then just waits for the periodic pass.
+# It must exit 0 though, a failing PrologSlurmctld requeues the job.
+
+export PATH="/usr/local/bin:/usr/bin:/bin:${PATH}"
+
+timeout_s="${WAIT_NODES_TIMEOUT:-1800}"
+slurmd_port="${WAIT_NODES_SLURMD_PORT:-6818}"
+scontrol_every="${WAIT_NODES_SCONTROL_EVERY:-5}"
+
+[[ -n "${SLURM_JOB_NODELIST}" ]] || exit 0
+
+# Each scontrol call parses the full cluster config, so keep these rare
+booting() {
+	local flags
+	flags="$(scontrol show node -o "${SLURM_JOB_NODELIST}" 2>/dev/null |
+		grep -o 'State=[^ ]*' | cut -d= -f2 | tr '+' '\n')" || return 1
+	# A failed node gets the job requeued, no point waiting for it
+	grep -qxE 'DOWN|DRAIN|FAIL' <<<"${flags}" && return 1
+	# POWER_DOWN alone means "power off when idle", only these hold the launch
+	grep -qxE 'POWERING_UP|POWERED_DOWN' <<<"${flags}"
+}
+
+# slurmd registers right after it starts listening, and probing the port is cheap
+slurmd_listening() {
+	local host
+	for host in ${hosts}; do
+		timeout 1 bash -c "exec 3<>/dev/tcp/${host}/${slurmd_port}" 2>/dev/null || return 1
+	done
+}
+
+booting || exit 0
+hosts="$(scontrol show hostnames "${SLURM_JOB_NODELIST}" 2>/dev/null)" || exit 0
+
+deadline=$((SECONDS + timeout_s))
+while ((SECONDS < deadline)); do
+	for ((i = 0; i < scontrol_every; i++)); do
+		sleep 1
+		slurmd_listening && break
+	done
+	booting || break
+done
+exit 0

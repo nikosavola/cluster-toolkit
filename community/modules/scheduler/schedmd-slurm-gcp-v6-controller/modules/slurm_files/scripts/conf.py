@@ -153,6 +153,7 @@ class SlurmConfigGenerator:
         epilog_path = Path(dirs.custom_scripts / "epilog.d")
         task_prolog_path = Path(dirs.custom_scripts / "task_prolog.d")
         task_epilog_path = Path(dirs.custom_scripts / "task_epilog.d")
+        prolog_slurmctld_path = Path(dirs.custom_scripts / "prolog_slurmctld.d")
         default_tree_width = 65533 if any_dynamic else 128
 
         return {
@@ -161,6 +162,7 @@ class SlurmConfigGenerator:
             "Epilog": f"{epilog_path}/*" if self.lkp.cfg.epilog_scripts else None,
             "TaskProlog": f"{task_prolog_path}/task-prolog" if self.lkp.cfg.task_prolog_scripts else None,
             "TaskEpilog": f"{task_epilog_path}/task-epilog" if self.lkp.cfg.task_epilog_scripts else None,
+            "PrologSlurmctld": f"{prolog_slurmctld_path}/prolog-wait-nodes" if get("prolog_wait_nodes", False) else None,
             "PrologFlags": get("prolog_flags", None),
             "SwitchType": get("switch_type", None),
             "PrivateData": get("private_data", []),

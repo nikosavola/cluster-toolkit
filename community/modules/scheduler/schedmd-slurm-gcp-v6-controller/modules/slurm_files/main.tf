@@ -202,6 +202,7 @@ locals {
   controller_files = [
     "requirements.txt",
     "tools/gpu-test",
+    "tools/prolog-wait-nodes",
     "tools/task-epilog",
     "tools/task-prolog",
     "conf.py",
@@ -232,6 +233,7 @@ locals {
 
   compute_files = [
     "tools/gpu-test",
+    "tools/prolog-wait-nodes",
     "tools/task-epilog",
     "tools/task-prolog",
     "conf.py",
