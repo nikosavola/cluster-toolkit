@@ -605,3 +605,13 @@ def test_conflines_prolog_wait_nodes(mock_slurm_version, enabled, version):
     res = conf.conflines(lkp)
     line = "PrologSlurmctld=/slurm/custom_scripts/prolog_slurmctld.d/prolog-wait-nodes"
     assert (line in res.splitlines()) == enabled
+
+
+@mock.patch('util.Lookup.slurm_version', new_callable=mock.PropertyMock)
+def test_conflines_prolog_wait_nodes_hybrid(mock_slurm_version):
+    cfg = TstCfg(install_dir="ukulele", hybrid=True, cloud_parameters={"prolog_wait_nodes": True})
+    cfg.cloud_parameters = NSDict(cfg.cloud_parameters)
+    mock_slurm_version.return_value = "25.11"
+    lkp = util.Lookup(cfg)
+    lkp.template_info = mock.Mock(return_value=TstTemplateInfo(gpu=None))
+    assert "PrologSlurmctld" not in conf.conflines(lkp)

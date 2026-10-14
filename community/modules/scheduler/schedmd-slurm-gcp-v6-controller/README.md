@@ -394,6 +394,12 @@ registered. Setting `cloud_parameters.prolog_wait_nodes: true` adds a
 launches the job as soon as it exits. This also applies to `srun` and `salloc`.
 A multi-node batch job waits for all of its nodes, not just the first one.
 
+`slurmctld` runs the prolog for every job start, so this costs a short-lived
+process per job: a TCP connect for nodes that are already up, and one `scontrol`
+call every 30 s while nodes boot (at most 540 s). SchedMD advises against
+`PrologSlurmctld` for high-throughput clusters, so leave it off if you start
+many short jobs per second. It is ignored for hybrid clusters.
+
 ## Support
 
 The Cluster Toolkit team maintains the wrapper around the [slurm-on-gcp]

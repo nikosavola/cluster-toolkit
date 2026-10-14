@@ -162,7 +162,8 @@ class SlurmConfigGenerator:
             "Epilog": f"{epilog_path}/*" if self.lkp.cfg.epilog_scripts else None,
             "TaskProlog": f"{task_prolog_path}/task-prolog" if self.lkp.cfg.task_prolog_scripts else None,
             "TaskEpilog": f"{task_epilog_path}/task-epilog" if self.lkp.cfg.task_epilog_scripts else None,
-            "PrologSlurmctld": f"{prolog_slurmctld_path}/prolog-wait-nodes" if get("prolog_wait_nodes", False) else None,
+            # Hybrid controllers don't get the script installed
+            "PrologSlurmctld": f"{prolog_slurmctld_path}/prolog-wait-nodes" if get("prolog_wait_nodes", False) and not self.lkp.cfg.hybrid else None,
             "PrologFlags": get("prolog_flags", None),
             "SwitchType": get("switch_type", None),
             "PrivateData": get("private_data", []),
